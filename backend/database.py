@@ -25,6 +25,7 @@ class User(Base):
     learning_goal = Column(String, nullable=True)
     explanation_style = Column(String, nullable=True)
     onboarding_done = Column(Integer, default=0)  # 0 = not done, 1 = done
+    is_admin = Column(Integer, default=0)  # 0 = user, 1 = admin
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     courses = relationship("Course", back_populates="user")
@@ -84,6 +85,44 @@ class Quiz(Base):
     lesson = relationship("Lesson", back_populates="quizzes")
 
 
+class LessonProgress(Base):
+    __tablename__ = "lesson_progress"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
+    completed = Column(Integer, default=1)  # 1 = completed, 0 = incomplete
+    completed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
+    score = Column(Integer, nullable=False)
+    max_score = Column(Integer, nullable=False)
+    percentage = Column(Integer, nullable=False)  # 0-100
+    passed = Column(Integer, default=0)  # 1 = passed (>=70%), 0 = failed
+    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Badge(Base):
+    __tablename__ = "badges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    name = Column(String, nullable=False)  # e.g., "Neural Architect", "Quantum Pioneer"
+    domain = Column(String, nullable=False)  # "AI" or "QC"
+    description = Column(Text, nullable=False)
+    icon = Column(String, default="Trophy")  # Trophy, Award, Zap, etc.
+    earned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -94,3 +133,35 @@ def get_db():
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    
+    # Safe SQLite migration for is_admin column
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        res = conn.execute(text("PRAGMA table_info(users)"))
+        columns = [row[1] for row in res.fetchall()]
+        if "is_admin" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
+            conn.commit()
+
+    # Seed default admin user
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            import bcrypt
+            pwd_hash = bcrypt.hashpw("adminpassword123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            admin_user = User(
+                username="admin",
+                password_hash=pwd_hash,
+                profession="Administrator",
+                knowledge_level="Advanced",
+                learning_domain="Artificial Intelligence",
+                learning_goal="Platform Oversight",
+                explanation_style="Technical",
+                onboarding_done=1,
+                is_admin=1,
+            )
+            db.add(admin_user)
+            db.commit()
+    finally:
+        db.close()

@@ -81,3 +81,11 @@
 [2026-09-13 10:56] FEATURE: Full End-to-End E2E Browser Test | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Verified full user lifecycle in browser: Landing page -> Sign up -> Onboarding (Teacher persona) -> Dashboard -> Generate Course via Gemini (Neural Networks) -> Lesson 1 reader -> LMSCN Quiz 1 (answered questions, received score) -> Lesson 2 -> LMSCN Quiz 2.
 
 [2026-09-13 11:06] FEATURE: Root .gitignore | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Created root .gitignore covering Python venvs, __pycache__, SQLite DBs, .env secrets, Next.js build output, and node_modules.
+
+[2026-09-13 19:30] FEATURE: Lesson Progress & Quiz History Persistence | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Created lesson_progress and quiz_attempts tables in SQLite; updated /course/[id] and /dashboard with real-time percentage progress bars and checkmark indicators.
+
+[2026-09-13 19:35] FEATURE: Badges & Achievement System | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Implemented automated badge awards for scoring >=80% on all course quizzes (e.g., 'Neural Architect'); created Badges showcase in Dashboard and badge celebration popup in quiz runner.
+
+[2026-09-13 19:38] FEATURE: Spaced Repetition Flashcards (lmscn) | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Built interactive 3D flip FlashcardDeck component using lmscn/shadcn Card primitives at /course/[id]/flashcards; auto-extracts key concepts and takeaways from lessons.
+
+[2026-09-13 19:58] FEATURE: Admin Panel & SQLite Live DB Explorer | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Created /admin route with Super Admin role, platform analytics KPIs, course manager capable of deleting any user's course, user accounts manager, and real-time live SQLite database table viewer.

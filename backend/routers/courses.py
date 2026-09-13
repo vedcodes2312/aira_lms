@@ -1,34 +1,119 @@
 import json
+import re
+from typing import List, Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, User, Course, Module, Lesson, Quiz
-from schemas import GenerateCourseRequest, CourseSummary, CourseDetail, ModuleOut, LessonOut, QuizOut
+from database import get_db, User, Course, Module, Lesson, Quiz, LessonProgress, QuizAttempt, Badge
+from schemas import (
+    GenerateCourseRequest,
+    CourseSummary,
+    CourseDetail,
+    ModuleOut,
+    LessonOut,
+    QuizOut,
+    BadgeOut,
+    QuizAttemptCreate,
+    QuizAttemptOut,
+    QuizAttemptResponse,
+    FlashcardOut,
+)
 from auth import get_current_user
 from llm import generate_course
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
 
-def _serialize_course(course: Course) -> CourseDetail:
+def _get_course_badge(course_id: int, user_id: int, db: Session) -> Optional[BadgeOut]:
+    b = db.query(Badge).filter(Badge.course_id == course_id, Badge.user_id == user_id).first()
+    if b:
+        return BadgeOut(
+            id=b.id,
+            course_id=b.course_id,
+            name=b.name,
+            domain=b.domain,
+            description=b.description,
+            icon=b.icon,
+            earned_at=b.earned_at,
+        )
+    return None
+
+
+def _serialize_course(course: Course, user_id: int, db: Session) -> CourseDetail:
+    # Get completed lesson IDs for this user & course
+    completed_rows = (
+        db.query(LessonProgress)
+        .filter(
+            LessonProgress.course_id == course.id,
+            LessonProgress.user_id == user_id,
+            LessonProgress.completed == 1,
+        )
+        .all()
+    )
+    completed_lesson_ids = {r.lesson_id for r in completed_rows}
+
+    # Get quiz attempts for this user & course
+    attempts = (
+        db.query(QuizAttempt)
+        .filter(QuizAttempt.course_id == course.id, QuizAttempt.user_id == user_id)
+        .all()
+    )
+    best_scores = {}
+    attempt_counts = {}
+    for a in attempts:
+        attempt_counts[a.lesson_id] = attempt_counts.get(a.lesson_id, 0) + 1
+        if a.lesson_id not in best_scores or a.percentage > best_scores[a.lesson_id]:
+            best_scores[a.lesson_id] = a.percentage
+
+    total_lessons = 0
+    completed_lessons = 0
+
     modules_out = []
     for mod in course.modules:
         lessons_out = []
         for les in mod.lessons:
-            content = json.loads(les.content_json)
-            quizzes_out = [
-                QuizOut(
-                    id=q.id,
-                    question=q.question,
-                    options=json.loads(q.options_json),
-                    correct_answer=q.correct_answer,
-                    explanation=q.explanation,
+            total_lessons += 1
+            is_comp = les.id in completed_lesson_ids
+            if is_comp:
+                completed_lessons += 1
+
+            try:
+                content = json.loads(les.content_json)
+            except Exception:
+                content = {}
+
+            quizzes_out = []
+            for q in les.quizzes:
+                try:
+                    options = json.loads(q.options_json)
+                except Exception:
+                    options = []
+                quizzes_out.append(
+                    QuizOut(
+                        id=q.id,
+                        question=q.question,
+                        options=options,
+                        correct_answer=q.correct_answer,
+                        explanation=q.explanation,
+                    )
                 )
-                for q in les.quizzes
-            ]
+
             lessons_out.append(
-                LessonOut(id=les.id, title=les.title, content=content, order=les.order, quizzes=quizzes_out)
+                LessonOut(
+                    id=les.id,
+                    title=les.title,
+                    content=content,
+                    order=les.order,
+                    quizzes=quizzes_out,
+                    is_completed=is_comp,
+                    best_quiz_score=best_scores.get(les.id),
+                    quiz_attempts_count=attempt_counts.get(les.id, 0),
+                )
             )
         modules_out.append(ModuleOut(id=mod.id, title=mod.title, order=mod.order, lessons=lessons_out))
+
+    progress_percentage = int((completed_lessons / total_lessons * 100)) if total_lessons > 0 else 0
+    badge = _get_course_badge(course.id, user_id, db)
 
     return CourseDetail(
         id=course.id,
@@ -38,6 +123,10 @@ def _serialize_course(course: Course) -> CourseDetail:
         description=course.description,
         difficulty=course.difficulty,
         created_at=course.created_at,
+        total_lessons=total_lessons,
+        completed_lessons=completed_lessons,
+        progress_percentage=progress_percentage,
+        badge=badge,
         modules=modules_out,
     )
 
@@ -45,18 +134,54 @@ def _serialize_course(course: Course) -> CourseDetail:
 @router.get("", response_model=list[CourseSummary])
 def list_courses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     courses = db.query(Course).filter(Course.user_id == current_user.id).order_by(Course.created_at.desc()).all()
-    return [
-        CourseSummary(
-            id=c.id,
-            domain=c.domain,
-            topic=c.topic,
-            title=c.title,
-            description=c.description,
-            difficulty=c.difficulty,
-            created_at=c.created_at,
+    results = []
+    for c in courses:
+        # Calculate summary progress
+        all_lessons = [les for mod in c.modules for les in mod.lessons]
+        total_lessons = len(all_lessons)
+        lesson_ids = [les.id for les in all_lessons]
+
+        completed_count = 0
+        if lesson_ids:
+            completed_count = (
+                db.query(LessonProgress)
+                .filter(
+                    LessonProgress.course_id == c.id,
+                    LessonProgress.user_id == current_user.id,
+                    LessonProgress.lesson_id.in_(lesson_ids),
+                    LessonProgress.completed == 1,
+                )
+                .count()
+            )
+
+        progress_percentage = int((completed_count / total_lessons * 100)) if total_lessons > 0 else 0
+        badge = _get_course_badge(c.id, current_user.id, db)
+
+        results.append(
+            CourseSummary(
+                id=c.id,
+                domain=c.domain,
+                topic=c.topic,
+                title=c.title,
+                description=c.description,
+                difficulty=c.difficulty,
+                created_at=c.created_at,
+                total_lessons=total_lessons,
+                completed_lessons=completed_count,
+                progress_percentage=progress_percentage,
+                badge=badge,
+            )
         )
-        for c in courses
-    ]
+    return results
+
+
+@router.get("/badges/me", response_model=List[BadgeOut])
+def get_my_badges(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    badges = db.query(Badge).filter(Badge.user_id == current_user.id).order_by(Badge.earned_at.desc()).all()
+    return badges
 
 
 @router.post("/generate", response_model=CourseDetail)
@@ -129,9 +254,8 @@ def generate(
     db.commit()
     db.refresh(course)
 
-    # Reload with relationships
     course = db.query(Course).filter(Course.id == course.id).first()
-    return _serialize_course(course)
+    return _serialize_course(course, current_user.id, db)
 
 
 @router.get("/{course_id}", response_model=CourseDetail)
@@ -143,4 +267,277 @@ def get_course(
     course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    return _serialize_course(course)
+    return _serialize_course(course, current_user.id, db)
+
+
+@router.post("/{course_id}/lessons/{lesson_id}/toggle-complete")
+def toggle_lesson_complete(
+    course_id: int,
+    lesson_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    progress = (
+        db.query(LessonProgress)
+        .filter(
+            LessonProgress.course_id == course_id,
+            LessonProgress.lesson_id == lesson_id,
+            LessonProgress.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if progress:
+        progress.completed = 1 if progress.completed == 0 else 0
+        progress.completed_at = datetime.now(timezone.utc)
+    else:
+        progress = LessonProgress(
+            user_id=current_user.id,
+            course_id=course_id,
+            lesson_id=lesson_id,
+            completed=1,
+            completed_at=datetime.now(timezone.utc),
+        )
+        db.add(progress)
+
+    db.commit()
+
+    # Recalculate course completion
+    all_lessons = [les.id for mod in course.modules for les in mod.lessons]
+    completed_count = (
+        db.query(LessonProgress)
+        .filter(
+            LessonProgress.course_id == course_id,
+            LessonProgress.user_id == current_user.id,
+            LessonProgress.lesson_id.in_(all_lessons),
+            LessonProgress.completed == 1,
+        )
+        .count()
+    )
+    pct = int((completed_count / len(all_lessons) * 100)) if all_lessons else 0
+
+    return {
+        "is_completed": bool(progress.completed == 1),
+        "completed_lessons": completed_count,
+        "total_lessons": len(all_lessons),
+        "progress_percentage": pct,
+    }
+
+
+@router.post("/{course_id}/lessons/{lesson_id}/quiz-attempt", response_model=QuizAttemptResponse)
+def submit_quiz_attempt(
+    course_id: int,
+    lesson_id: int,
+    req: QuizAttemptCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    # Record the attempt
+    attempt = QuizAttempt(
+        user_id=current_user.id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+        score=req.score,
+        max_score=req.max_score,
+        percentage=req.percentage,
+        passed=1 if req.passed else 0,
+        attempted_at=datetime.now(timezone.utc),
+    )
+    db.add(attempt)
+
+    # Automatically mark lesson completed if passed
+    if req.passed:
+        prog = (
+            db.query(LessonProgress)
+            .filter(
+                LessonProgress.course_id == course_id,
+                LessonProgress.lesson_id == lesson_id,
+                LessonProgress.user_id == current_user.id,
+            )
+            .first()
+        )
+        if prog:
+            prog.completed = 1
+            prog.completed_at = datetime.now(timezone.utc)
+        else:
+            prog = LessonProgress(
+                user_id=current_user.id,
+                course_id=course_id,
+                lesson_id=lesson_id,
+                completed=1,
+                completed_at=datetime.now(timezone.utc),
+            )
+            db.add(prog)
+
+    db.commit()
+    db.refresh(attempt)
+
+    # Check Badge criteria:
+    # Award achievement badge if user scored >= 80% on all lesson quizzes in this course!
+    all_lessons = [les.id for mod in course.modules for les in mod.lessons]
+    all_passed_high = True
+    for lid in all_lessons:
+        highest_score = (
+            db.query(QuizAttempt.percentage)
+            .filter(
+                QuizAttempt.course_id == course_id,
+                QuizAttempt.lesson_id == lid,
+                QuizAttempt.user_id == current_user.id,
+            )
+            .order_by(QuizAttempt.percentage.desc())
+            .first()
+        )
+        if not highest_score or highest_score[0] < 80:
+            all_passed_high = False
+            break
+
+    badge_unlocked: Optional[BadgeOut] = None
+    if all_passed_high and len(all_lessons) > 0:
+        existing_badge = (
+            db.query(Badge)
+            .filter(Badge.course_id == course_id, Badge.user_id == current_user.id)
+            .first()
+        )
+        if not existing_badge:
+            badge_name = (
+                "Neural Architect" if course.domain == "AI" else "Quantum Pioneer"
+            )
+            if "transformer" in course.topic.lower() or "llm" in course.topic.lower():
+                badge_name = "LLM Mastermind"
+            elif "algorithm" in course.topic.lower() or "shor" in course.topic.lower():
+                badge_name = "Quantum Algorist"
+
+            new_badge = Badge(
+                user_id=current_user.id,
+                course_id=course_id,
+                name=badge_name,
+                domain=course.domain,
+                description=f"Scored >=80% on all quizzes in '{course.title}'",
+                icon="Trophy" if course.domain == "AI" else "Atom",
+                earned_at=datetime.now(timezone.utc),
+            )
+            db.add(new_badge)
+            db.commit()
+            db.refresh(new_badge)
+            existing_badge = new_badge
+
+        if existing_badge:
+            badge_unlocked = BadgeOut(
+                id=existing_badge.id,
+                course_id=existing_badge.course_id,
+                name=existing_badge.name,
+                domain=existing_badge.domain,
+                description=existing_badge.description,
+                icon=existing_badge.icon,
+                earned_at=existing_badge.earned_at,
+            )
+
+    return QuizAttemptResponse(
+        attempt=QuizAttemptOut(
+            id=attempt.id,
+            lesson_id=attempt.lesson_id,
+            score=attempt.score,
+            max_score=attempt.max_score,
+            percentage=attempt.percentage,
+            passed=bool(attempt.passed),
+            attempted_at=attempt.attempted_at,
+        ),
+        badge_unlocked=badge_unlocked,
+        all_quizzes_passed=all_passed_high,
+        lesson_marked_complete=req.passed,
+    )
+
+
+@router.get("/{course_id}/flashcards", response_model=List[FlashcardOut])
+def get_course_flashcards(
+    course_id: int,
+    lesson_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    flashcards: List[FlashcardOut] = []
+    card_idx = 1
+
+    for mod in course.modules:
+        for les in mod.lessons:
+            if lesson_id is not None and les.id != lesson_id:
+                continue
+
+            try:
+                content = json.loads(les.content_json)
+            except Exception:
+                content = {}
+
+            # 1. Important concepts
+            concepts = content.get("important_concepts", "")
+            if isinstance(concepts, str) and concepts.strip():
+                # Split lines
+                for line in concepts.split("\n"):
+                    line = line.strip(" -*•")
+                    if not line:
+                        continue
+                    if ":" in line:
+                        term, defn = line.split(":", 1)
+                    elif " - " in line:
+                        term, defn = line.split(" - ", 1)
+                    else:
+                        term, defn = line, content.get("summary", line)
+
+                    if term.strip() and defn.strip():
+                        flashcards.append(
+                            FlashcardOut(
+                                id=f"fc-{card_idx}",
+                                lesson_id=les.id,
+                                lesson_title=les.title,
+                                front=term.strip(),
+                                back=defn.strip(),
+                                category="Important Concept",
+                            )
+                        )
+                        card_idx += 1
+
+            # 2. Key Takeaways
+            takeaways = content.get("key_takeaways", [])
+            if isinstance(takeaways, list):
+                for i, t in enumerate(takeaways, start=1):
+                    if isinstance(t, str) and t.strip():
+                        flashcards.append(
+                            FlashcardOut(
+                                id=f"fc-{card_idx}",
+                                lesson_id=les.id,
+                                lesson_title=les.title,
+                                front=f"Key Takeaway #{i} ({les.title})",
+                                back=t.strip(),
+                                category="Key Takeaway",
+                            )
+                        )
+                        card_idx += 1
+
+            # 3. Mechanism / How it works
+            how_it_works = content.get("how_it_works", "")
+            if isinstance(how_it_works, str) and len(how_it_works.strip()) > 20:
+                flashcards.append(
+                    FlashcardOut(
+                        id=f"fc-{card_idx}",
+                        lesson_id=les.id,
+                        lesson_title=les.title,
+                        front=f"How It Works: {les.title}",
+                        back=how_it_works.strip(),
+                        category="Mechanism Breakdown",
+                    )
+                )
+                card_idx += 1
+
+    return flashcards

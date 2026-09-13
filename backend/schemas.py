@@ -40,7 +40,58 @@ class TopicResponse(BaseModel):
     topics: List[str]
 
 
-# ── Course Generation ───────────────────────────────────────────────────────────
+# ── Badges & Progress ──────────────────────────────────────────────────────────
+
+class BadgeOut(BaseModel):
+    id: int
+    course_id: int
+    name: str
+    domain: str
+    description: str
+    icon: str
+    earned_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class QuizAttemptCreate(BaseModel):
+    score: int
+    max_score: int
+    percentage: int
+    passed: bool
+
+
+class QuizAttemptOut(BaseModel):
+    id: int
+    lesson_id: int
+    score: int
+    max_score: int
+    percentage: int
+    passed: bool
+    attempted_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class QuizAttemptResponse(BaseModel):
+    attempt: QuizAttemptOut
+    badge_unlocked: Optional[BadgeOut] = None
+    all_quizzes_passed: bool = False
+    lesson_marked_complete: bool = True
+
+
+class FlashcardOut(BaseModel):
+    id: str
+    lesson_id: int
+    lesson_title: str
+    front: str
+    back: str
+    category: str
+
+
+# ── Course & Lessons ───────────────────────────────────────────────────────────
 
 class GenerateCourseRequest(BaseModel):
     domain: str
@@ -64,6 +115,9 @@ class LessonOut(BaseModel):
     content: dict
     order: int
     quizzes: List[QuizOut] = []
+    is_completed: bool = False
+    best_quiz_score: Optional[int] = None
+    quiz_attempts_count: int = 0
 
     class Config:
         from_attributes = True
@@ -87,6 +141,10 @@ class CourseSummary(BaseModel):
     description: str
     difficulty: Optional[str]
     created_at: datetime
+    total_lessons: int = 0
+    completed_lessons: int = 0
+    progress_percentage: int = 0
+    badge: Optional[BadgeOut] = None
 
     class Config:
         from_attributes = True

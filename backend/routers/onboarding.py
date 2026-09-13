@@ -38,4 +38,5 @@ def get_me(current_user: User = Depends(get_current_user)):
         "learning_goal": current_user.learning_goal,
         "explanation_style": current_user.explanation_style,
         "onboarding_done": bool(current_user.onboarding_done),
+        "is_admin": bool(current_user.is_admin),
     }
