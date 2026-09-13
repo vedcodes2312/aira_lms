@@ -1,0 +1,83 @@
+# AIRA Prototype — Build Log (feature | status | model | notes)
+
+[2026-09-13 09:51] FEATURE: Project scaffold + directory setup | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Created backend/ and frontend/ directories, wrote chatlogs.txt with header.
+
+[2026-09-13 09:52] FEATURE: Backend database models (SQLAlchemy) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Wrote database.py with User, Course, Module, Lesson, Quiz ORM models and get_db dependency.
+
+[2026-09-13 09:53] FEATURE: Backend Pydantic schemas | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Wrote schemas.py covering all request/response shapes for auth, onboarding, courses, and quizzes.
+
+[2026-09-13 09:53] FEATURE: Backend auth helpers (JWT + bcrypt) | STATUS: Partial | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Initial auth.py used passlib[bcrypt] which crashes on Python 3.13 due to 72-byte password bug in passlib's bcrypt wrapper.
+
+[2026-09-13 09:54] FEATURE: Signup + Login endpoints | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: routers/auth.py written with POST /auth/signup and POST /auth/login; signup returned 500 due to passlib bug (fixed in later step).
+
+[2026-09-13 09:54] FEATURE: Onboarding endpoint | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: routers/onboarding.py written with POST /onboarding (saves profile) and GET /onboarding/me.
+
+[2026-09-13 09:54] FEATURE: Topics endpoint | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: routers/topics.py with 15 AI topics and 15 QC topics; GET /topics?domain=AI|QC.
+
+[2026-09-13 09:54] FEATURE: Gemini 2.0 Flash LLM integration | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: llm.py written with profession-aware prompt builder and JSON cleaner; uses google-generativeai SDK with gemini-2.0-flash.
+
+[2026-09-13 09:54] FEATURE: Courses generate/list/get endpoints | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: routers/courses.py with POST /courses/generate (calls Gemini, saves to DB), GET /courses, GET /courses/{id}.
+
+[2026-09-13 09:55] FEATURE: FastAPI main app + CORS | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: main.py registered all routers, added CORS for localhost:3000, and calls create_tables() on startup.
+
+[2026-09-13 09:55] FEATURE: Backend venv + pip install | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Created venv and installed all requirements; all imports verified OK.
+
+[2026-09-13 09:55] FEATURE: Next.js frontend scaffold | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: npx create-next-app@latest with TypeScript + Tailwind + App Router; completed in ~2 min.
+
+[2026-09-13 09:57] FEATURE: Frontend API client (lib/api.ts) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Centralised typed wrappers for all backend endpoints with JWT token storage in localStorage.
+
+[2026-09-13 09:58] FEATURE: ProtectedRoute + Navbar components | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: ProtectedRoute redirects unauthenticated users; Navbar shows login/logout links contextually.
+
+[2026-09-13 09:58] FEATURE: Signup page (/signup) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Username + password + confirm form, calls backend, stores JWT, redirects to /onboarding.
+
+[2026-09-13 09:59] FEATURE: Login page (/login) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Login form with JWT storage; redirects to /onboarding or /dashboard based on onboarding_done flag.
+
+[2026-09-13 09:59] FEATURE: Onboarding page (/onboarding) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Single-page form with profession/level/domain/goal/style fields; interactive toggle buttons; saves to backend.
+
+[2026-09-13 09:59] FEATURE: Dashboard page (/dashboard) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Lists past courses as clickable cards; shows empty state CTA when no courses exist.
+
+[2026-09-13 10:00] FEATURE: Generate course page (/generate) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Domain → topic selection → Generate button with loading state during Gemini API call.
+
+[2026-09-13 10:00] FEATURE: Course overview page (/course/[id]) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Shows course title/description, module/lesson tree with direct lesson links and quiz count.
+
+[2026-09-13 10:00] FEATURE: Lesson reader page (/course/[id]/lesson/[lessonId]) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Renders all 9 content sections in order (intro, main explanation, how it works, etc.) with next-lesson and quiz navigation.
+
+[2026-09-13 10:01] FEATURE: Quiz page (/course/[id]/quiz/[lessonId]) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Question-by-question MCQ with answer reveal, explanation display, score summary, and full answer review screen.
+
+[2026-09-13 10:02] FEATURE: Backend startup + health check | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Backend started on :8000, GET /health returned {status: ok} successfully.
+
+[2026-09-13 10:02] FEATURE: Signup endpoint test | STATUS: Failed | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Returned 500 due to passlib bcrypt crash on Python 3.13 (detect_wrap_bug ValueError).
+
+[2026-09-13 10:04] FEATURE: Tailwind v4 globals.css fix | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Replaced @tailwind directives + @apply with @import "tailwindcss" and plain CSS in @layer to fix Tailwind v4 compatibility error.
+
+[2026-09-13 10:10] FEATURE: bcrypt fix (passlib → direct bcrypt) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Replaced passlib[bcrypt] with bcrypt==4.2.1 used directly; Python 3.13 compatible.
+
+[2026-09-13 10:12] FEATURE: Signup endpoint retest | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: After bcrypt fix, POST /auth/signup returned JWT token successfully; user created in SQLite DB.
+
+[2026-09-13 10:12] FEATURE: shadcn/ui initialisation | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: npx shadcn@latest init --defaults added button.tsx, lib/utils.ts, and theme CSS variables to globals.css.
+
+[2026-09-13 10:12] FEATURE: shadcn primitives (button, card, progress, badge) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: All four lmscn-required shadcn components installed successfully.
+
+[2026-09-13 10:13] FEATURE: lmscn quiz component integration | STATUS: Partial | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: shadcn registry skipped quiz.tsx; fetched it directly from GitHub (309 lines) into components/lms/quiz.tsx.
+
+[2026-09-13 10:14] FEATURE: lucide-react install | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Installed lucide-react as required peer dependency for the lmscn quiz component icons.
+
+[2026-09-13 10:23] FEATURE: lmscn quiz page rewrite | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Rewrote /course/[id]/quiz/[lessonId] to use lmscn <Quiz> component; maps backend index-based answers to QuizData id-based format with retry button.
+
+[2026-09-13 10:24] FEATURE: TypeScript type check (full project) | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: npx tsc --noEmit returned zero errors across all pages including lmscn quiz integration.
+
+[2026-09-13 10:24] FEATURE: Frontend dev server startup | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Next.js 16 Turbopack started on localhost:3000 in 1063ms with no compilation errors.
+
+[2026-09-13 10:26] FEATURE: End-to-end signup flow browser test | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Browser agent confirmed signup page renders, form submits, JWT stored, redirected to /onboarding successfully.
+
+[2026-09-13 10:27] FEATURE: README.md | STATUS: Worked | MODEL: Claude Sonnet 4.6 (Thinking) | NOTES: Wrote full README with quick-start, project structure, user flow, Gemini API key instructions, and out-of-scope list.
+
+[2026-09-13 10:35] FEATURE: Homepage landing redesign | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Created rich landing page at / with hero section, gradient glows, AI/Quantum domain cards, 9-stage pedagogy highlights, and auth-aware CTAs.
+
+[2026-09-13 10:37] FEATURE: Gemini API key & model configuration | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Configured live Gemini API key; verified model listing; updated llm.py to gemini-3.6-flash with response_mime_type="application/json".
+
+[2026-09-13 10:49] FEATURE: LLM prompt & schema optimization | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Refined generation prompt to 2 modules x 2 lessons with concise section guidelines and strict=False JSON parsing to prevent token cutoff and parsing errors.
+
+[2026-09-13 10:56] FEATURE: Full End-to-End E2E Browser Test | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Verified full user lifecycle in browser: Landing page -> Sign up -> Onboarding (Teacher persona) -> Dashboard -> Generate Course via Gemini (Neural Networks) -> Lesson 1 reader -> LMSCN Quiz 1 (answered questions, received score) -> Lesson 2 -> LMSCN Quiz 2.
+
+[2026-09-13 11:06] FEATURE: Root .gitignore | STATUS: Worked | MODEL: Gemini 3.7 Flash | NOTES: Created root .gitignore covering Python venvs, __pycache__, SQLite DBs, .env secrets, Next.js build output, and node_modules.
