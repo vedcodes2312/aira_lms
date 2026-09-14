@@ -4,7 +4,19 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, User, Course, Module, Lesson, Quiz, LessonProgress, QuizAttempt, Badge
+from database import (
+    get_db,
+    User,
+    Course,
+    Module,
+    Lesson,
+    Quiz,
+    LessonProgress,
+    QuizAttempt,
+    Badge,
+    Certificate,
+    LessonTranslation,
+)
 from schemas import (
     GenerateCourseRequest,
     CourseSummary,
@@ -17,6 +29,10 @@ from schemas import (
     QuizAttemptOut,
     QuizAttemptResponse,
     FlashcardOut,
+    CertificateOut,
+    PublicCertificateVerification,
+    LessonTranslateRequest,
+    LessonTranslateResponse,
 )
 from auth import get_current_user
 from llm import generate_course
@@ -264,7 +280,11 @@ def get_course(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    if current_user.is_admin:
+        course = db.query(Course).filter(Course.id == course_id).first()
+    else:
+        course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     return _serialize_course(course, current_user.id, db)
@@ -463,7 +483,11 @@ def get_course_flashcards(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    if current_user.is_admin:
+        course = db.query(Course).filter(Course.id == course_id).first()
+    else:
+        course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
@@ -541,3 +565,189 @@ def get_course_flashcards(
                 card_idx += 1
 
     return flashcards
+
+
+# ── Certificates & LinkedIn Verification ──────────────────────────────────────
+
+@router.get("/{course_id}/certificate", response_model=CertificateOut)
+def get_or_issue_certificate(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    if not current_user.is_admin and course.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this course certificate")
+
+    # Check progress
+    all_lessons = [les.id for mod in course.modules for les in mod.lessons]
+    total_lessons = len(all_lessons)
+    if total_lessons == 0:
+        raise HTTPException(status_code=400, detail="Course has no lessons")
+
+    completed_count = (
+        db.query(LessonProgress)
+        .filter(
+            LessonProgress.course_id == course_id,
+            LessonProgress.user_id == current_user.id,
+            LessonProgress.lesson_id.in_(all_lessons),
+            LessonProgress.completed == 1,
+        )
+        .count()
+    )
+
+    if completed_count < total_lessons and not current_user.is_admin:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Course is not 100% complete yet ({completed_count}/{total_lessons} lessons completed)",
+        )
+
+    # Check if certificate exists
+    cert = (
+        db.query(Certificate)
+        .filter(Certificate.course_id == course_id, Certificate.user_id == current_user.id)
+        .first()
+    )
+
+    if not cert:
+        import secrets
+        badge = db.query(Badge).filter(Badge.course_id == course_id, Badge.user_id == current_user.id).first()
+        badge_name = badge.name if badge else ("Neural Architect" if course.domain == "AI" else "Quantum Pioneer")
+
+        cert_uuid = f"AIRA-{datetime.now(timezone.utc).year}-{secrets.token_hex(4).upper()}"
+        
+        # Calculate average quiz score
+        avg_score_row = (
+            db.query(QuizAttempt.percentage)
+            .filter(QuizAttempt.course_id == course_id, QuizAttempt.user_id == current_user.id)
+            .all()
+        )
+        avg_score = int(sum(r[0] for r in avg_score_row) / len(avg_score_row)) if avg_score_row else 100
+
+        # Formatted recipient name (capitalized nicely)
+        raw_name = current_user.username.replace("_", " ").title()
+
+        cert = Certificate(
+            user_id=current_user.id,
+            course_id=course_id,
+            cert_uuid=cert_uuid,
+            recipient_name=raw_name,
+            course_title=course.title,
+            domain=course.domain,
+            badge_name=badge_name,
+            score_percentage=max(avg_score, 80),
+            issued_at=datetime.now(timezone.utc),
+        )
+        db.add(cert)
+        db.commit()
+        db.refresh(cert)
+
+    import urllib.parse
+    cert_url = f"http://localhost:3000/certificate/{cert.cert_uuid}"
+    linkedin_url = (
+        f"https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME"
+        f"&name={urllib.parse.quote(cert.course_title)}"
+        f"&organizationName=AIRA%20AI%20%26%20Quantum%20LMS"
+        f"&issueYear={cert.issued_at.year}"
+        f"&issueMonth={cert.issued_at.month}"
+        f"&certUrl={urllib.parse.quote(cert_url)}"
+        f"&certId={cert.cert_uuid}"
+    )
+
+    return CertificateOut(
+        id=cert.id,
+        cert_uuid=cert.cert_uuid,
+        recipient_name=cert.recipient_name,
+        course_id=cert.course_id,
+        course_title=cert.course_title,
+        domain=cert.domain,
+        badge_name=cert.badge_name,
+        score_percentage=cert.score_percentage,
+        issued_at=cert.issued_at,
+        linkedin_url=linkedin_url,
+    )
+
+
+@router.get("/public/verify-certificate/{cert_uuid}", response_model=PublicCertificateVerification)
+def verify_certificate_public(cert_uuid: str, db: Session = Depends(get_db)):
+    cert = db.query(Certificate).filter(Certificate.cert_uuid == cert_uuid).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found or invalid verification ID")
+
+    return PublicCertificateVerification(
+        valid=True,
+        cert_uuid=cert.cert_uuid,
+        recipient_name=cert.recipient_name,
+        course_title=cert.course_title,
+        domain=cert.domain,
+        badge_name=cert.badge_name,
+        score_percentage=cert.score_percentage,
+        issued_at=cert.issued_at,
+        issuer="AIRA AI & Quantum LMS Platform",
+        verification_url=f"http://localhost:3000/certificate/{cert.cert_uuid}",
+    )
+
+
+# ── Lesson Translation & Multi-Lingual Engine ─────────────────────────────────
+
+@router.post("/{course_id}/lessons/{lesson_id}/translate", response_model=LessonTranslateResponse)
+def translate_lesson(
+    course_id: int,
+    lesson_id: int,
+    req: LessonTranslateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    target_lang = req.language.strip()
+    if target_lang.lower() in ["english", "en"]:
+        try:
+            content = json.loads(lesson.content_json)
+        except Exception:
+            content = {}
+        return LessonTranslateResponse(lesson_id=lesson.id, language="English", content=content, is_cached=True)
+
+    # Check cache in DB
+    cached = (
+        db.query(LessonTranslation)
+        .filter(LessonTranslation.lesson_id == lesson_id, LessonTranslation.language.ilike(target_lang))
+        .first()
+    )
+    if cached:
+        try:
+            cached_content = json.loads(cached.content_json)
+            return LessonTranslateResponse(lesson_id=lesson.id, language=target_lang, content=cached_content, is_cached=True)
+        except Exception:
+            pass
+
+    # Generate translation via LLM
+    try:
+        original_content = json.loads(lesson.content_json)
+    except Exception:
+        original_content = {}
+
+    from llm import translate_lesson_content
+    translated_content = translate_lesson_content(original_content, target_lang)
+
+    # Persist translation cache
+    new_trans = LessonTranslation(
+        lesson_id=lesson_id,
+        language=target_lang,
+        content_json=json.dumps(translated_content),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(new_trans)
+    db.commit()
+
+    return LessonTranslateResponse(
+        lesson_id=lesson_id,
+        language=target_lang,
+        content=translated_content,
+        is_cached=False,
+    )

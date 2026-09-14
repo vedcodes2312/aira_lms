@@ -342,3 +342,59 @@ export async function getAdminTableData(tableName: string): Promise<DbTableData>
   return request<DbTableData>(`/admin/database/table/${tableName}`);
 }
 
+// ── Certificates & LinkedIn ──────────────────────────────────────────────────
+
+export interface CertificateData {
+  id: number;
+  cert_uuid: string;
+  recipient_name: string;
+  course_id: number;
+  course_title: string;
+  domain: string;
+  badge_name: string | null;
+  score_percentage: number;
+  issued_at: string;
+  linkedin_url: string;
+}
+
+export interface PublicCertificateData {
+  valid: boolean;
+  cert_uuid: string;
+  recipient_name: string;
+  course_title: string;
+  domain: string;
+  badge_name: string | null;
+  score_percentage: number;
+  issued_at: string;
+  issuer: string;
+  verification_url: string;
+}
+
+export async function getCourseCertificate(courseId: number): Promise<CertificateData> {
+  return request<CertificateData>(`/courses/${courseId}/certificate`);
+}
+
+export async function verifyCertificatePublic(certUuid: string): Promise<PublicCertificateData> {
+  return request<PublicCertificateData>(`/courses/public/verify-certificate/${certUuid}`, {}, false);
+}
+
+// ── Translation & Multi-Lingual ───────────────────────────────────────────────
+
+export interface LessonTranslateData {
+  lesson_id: number;
+  language: string;
+  content: Record<string, string | string[]>;
+  is_cached: boolean;
+}
+
+export async function translateLesson(
+  courseId: number,
+  lessonId: number,
+  language: string
+): Promise<LessonTranslateData> {
+  return request<LessonTranslateData>(`/courses/${courseId}/lessons/${lessonId}/translate`, {
+    method: "POST",
+    body: JSON.stringify({ language }),
+  });
+}
+

@@ -154,3 +154,62 @@ def generate_course(
         raise ValueError(f"Gemini returned invalid JSON: {e}\n\nRaw response (first 500 chars):\n{raw_text[:500]}")
 
     return course_data
+
+
+def translate_lesson_content(content_dict: dict, target_language: str) -> dict:
+    """Translate and adapt lesson content into target language (e.g. Hinglish, Hindi, Tamil, Telugu, Marathi)."""
+    if target_language.lower() in ["english", "en"]:
+        return content_dict
+
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "your_gemini_api_key_here":
+        # Fallback if no key
+        return content_dict
+
+    lang_instructions = {
+        "hinglish": "Translate the content into natural, easy-to-understand conversational Hinglish (Hindi written in Roman/Latin script, the way tech professionals speak in India). Keep core technical terms (like Qubit, Neural Network, Backpropagation, Weights, ReLU, Superposition) in English.",
+        "hindi": "Translate the content into clear, educational Hindi (Devanagari script). Keep core English acronyms (AI, CNN, LLM, Qubit) in brackets where helpful.",
+        "tamil": "Translate the content into clear, educational Tamil. Keep core technical terms and acronyms in English/transliterated.",
+        "telugu": "Translate the content into clear, educational Telugu. Keep core technical terms and acronyms in English/transliterated.",
+        "marathi": "Translate the content into clear, educational Marathi. Keep core technical terms and acronyms in English/transliterated.",
+    }
+
+    instruction = lang_instructions.get(
+        target_language.lower(),
+        f"Translate the content into {target_language}. Keep core technical terms intact.",
+    )
+
+    prompt = f"""You are AIRA's pedagogical translation engine.
+{instruction}
+
+Translate the following lesson JSON content. Preserve all JSON keys exactly:
+- introduction
+- main_explanation
+- how_it_works
+- real_world_example
+- practical_applications
+- important_concepts
+- limitations
+- summary
+- key_takeaways (array of strings)
+
+INPUT CONTENT JSON:
+{json.dumps(content_dict, ensure_ascii=False)}
+
+OUTPUT FORMAT: Return ONLY the translated valid JSON object matching the exact keys above. No markdown, no fences."""
+
+    try:
+        model = genai.GenerativeModel(
+            model_name=MODEL_NAME,
+            generation_config={
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
+        )
+        response = model.generate_content(prompt)
+        raw_text = response.text
+        cleaned = clean_json_response(raw_text)
+        translated_data = json.loads(cleaned, strict=False)
+        return translated_data
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return content_dict

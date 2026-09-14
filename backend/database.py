@@ -123,6 +123,31 @@ class Badge(Base):
     earned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class Certificate(Base):
+    __tablename__ = "certificates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    cert_uuid = Column(String, unique=True, index=True, nullable=False)  # e.g. "AIRA-2026-A1B2C3"
+    recipient_name = Column(String, nullable=False)
+    course_title = Column(String, nullable=False)
+    domain = Column(String, nullable=False)
+    badge_name = Column(String, nullable=True)
+    score_percentage = Column(Integer, default=100)
+    issued_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class LessonTranslation(Base):
+    __tablename__ = "lesson_translations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
+    language = Column(String, nullable=False)  # "Hinglish", "Hindi", "Tamil", "Telugu", "Marathi"
+    content_json = Column(Text, nullable=False)  # Translated 9-stage JSON
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -134,13 +159,22 @@ def get_db():
 def create_tables():
     Base.metadata.create_all(bind=engine)
     
-    # Safe SQLite migration for is_admin column
+    # Safe SQLite migrations
     with engine.connect() as conn:
         from sqlalchemy import text
         res = conn.execute(text("PRAGMA table_info(users)"))
-        columns = [row[1] for row in res.fetchall()]
-        if "is_admin" not in columns:
+        user_cols = [row[1] for row in res.fetchall()]
+        if "is_admin" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
+            conn.commit()
+        if "preferred_language" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN preferred_language VARCHAR DEFAULT 'English'"))
+            conn.commit()
+
+        res_c = conn.execute(text("PRAGMA table_info(courses)"))
+        course_cols = [row[1] for row in res_c.fetchall()]
+        if "language" not in course_cols:
+            conn.execute(text("ALTER TABLE courses ADD COLUMN language VARCHAR DEFAULT 'English'"))
             conn.commit()
 
     # Seed default admin user
@@ -160,6 +194,7 @@ def create_tables():
                 explanation_style="Technical",
                 onboarding_done=1,
                 is_admin=1,
+                preferred_language="English",
             )
             db.add(admin_user)
             db.commit()

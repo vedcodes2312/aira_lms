@@ -208,11 +208,31 @@ function Dashboard() {
                             </Button>
                           </Link>
 
-                          <Link href={`/course/${course.id}`}>
-                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">
-                              {progressPct === 100 ? "Review" : "Continue"} <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                            </Button>
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            {progressPct === 100 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    const { getCourseCertificate } = await import("@/lib/api");
+                                    const cert = await getCourseCertificate(course.id);
+                                    router.push(`/certificate/${cert.cert_uuid}`);
+                                  } catch (e: any) {
+                                    alert(e?.message || "Failed to load certificate");
+                                  }
+                                }}
+                                className="text-xs border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 font-semibold"
+                              >
+                                <Award className="w-3.5 h-3.5 mr-1 text-amber-600" /> Certificate
+                              </Button>
+                            )}
+                            <Link href={`/course/${course.id}`}>
+                              <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">
+                                {progressPct === 100 ? "Review" : "Continue"} <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
                       </div>
                     </div>

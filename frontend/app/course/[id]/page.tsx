@@ -133,8 +133,43 @@ function CourseOverview() {
           </div>
         )}
 
+        {/* Certificate Banner when 100% Complete */}
+        {progressPct === 100 && (
+          <div className="mt-4 bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 border border-indigo-500/40 rounded-xl p-5 text-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg shadow-indigo-500/10 animate-in fade-in duration-500">
+            <div className="flex items-center gap-3.5 text-left">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-300">Official Certification</span>
+                  <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-[10px]">Verified</Badge>
+                </div>
+                <h3 className="text-base font-bold text-white">Your Certificate of Completion is Ready!</h3>
+                <p className="text-xs text-slate-300 mt-0.5">Publish your verified credential directly to your LinkedIn Profile.</p>
+              </div>
+            </div>
+
+            <Button
+              onClick={async () => {
+                try {
+                  const { getCourseCertificate } = await import("@/lib/api");
+                  const cert = await getCourseCertificate(courseId);
+                  router.push(`/certificate/${cert.cert_uuid}`);
+                } catch (e: any) {
+                  alert(e?.message || "Failed to load certificate");
+                }
+              }}
+              className="w-full sm:w-auto bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-bold px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 shrink-0 text-xs"
+            >
+              <Award className="w-4 h-4 mr-1.5" />
+              View Certificate & LinkedIn Badge
+            </Button>
+          </div>
+        )}
+
         {/* Start / Continue CTA */}
-        {firstUnfinished && (
+        {firstUnfinished ? (
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href={`/course/${courseId}/lesson/${firstUnfinished.id}`}
@@ -145,6 +180,29 @@ function CourseOverview() {
               <ArrowRight className="w-4 h-4" />
             </Link>
 
+            <Link href={`/course/${courseId}/flashcards`}>
+              <Button variant="outline" className="px-5 py-3 rounded-xl text-slate-700">
+                <Layers className="w-4 h-4 mr-1.5 text-indigo-600" /> Practice Flashcards
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button
+              onClick={async () => {
+                try {
+                  const { getCourseCertificate } = await import("@/lib/api");
+                  const cert = await getCourseCertificate(courseId);
+                  router.push(`/certificate/${cert.cert_uuid}`);
+                } catch (e: any) {
+                  alert(e?.message || "Failed to load certificate");
+                }
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-xl text-sm"
+            >
+              <Award className="w-4 h-4 mr-2 text-amber-300" />
+              Open Certificate
+            </Button>
             <Link href={`/course/${courseId}/flashcards`}>
               <Button variant="outline" className="px-5 py-3 rounded-xl text-slate-700">
                 <Layers className="w-4 h-4 mr-1.5 text-indigo-600" /> Practice Flashcards

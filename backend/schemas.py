@@ -152,3 +152,47 @@ class CourseSummary(BaseModel):
 
 class CourseDetail(CourseSummary):
     modules: List[ModuleOut] = []
+
+
+# ── Certificates & LinkedIn Verification ──────────────────────────────────────
+
+class CertificateOut(BaseModel):
+    id: int
+    cert_uuid: str
+    recipient_name: str
+    course_id: int
+    course_title: str
+    domain: str
+    badge_name: Optional[str] = None
+    score_percentage: int
+    issued_at: datetime
+    linkedin_url: str
+
+    class Config:
+        from_attributes = True
+
+
+class PublicCertificateVerification(BaseModel):
+    valid: bool
+    cert_uuid: str
+    recipient_name: str
+    course_title: str
+    domain: str
+    badge_name: Optional[str] = None
+    score_percentage: int
+    issued_at: datetime
+    issuer: str = "AIRA AI & Quantum LMS Platform"
+    verification_url: str
+
+
+# ── Language Translation ───────────────────────────────────────────────────────
+
+class LessonTranslateRequest(BaseModel):
+    language: str  # "Hinglish", "Hindi", "Tamil", "Telugu", "Marathi", "English"
+
+
+class LessonTranslateResponse(BaseModel):
+    lesson_id: int
+    language: str
+    content: dict
+    is_cached: bool = False

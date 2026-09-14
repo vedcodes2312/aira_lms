@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getCourse, toggleLessonComplete, Course, LessonItem } from "@/lib/api";
+import { getCourse, toggleLessonComplete, translateLesson, Course, LessonItem } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,9 @@ import {
   BookOpen,
   Sparkles,
   HelpCircle,
+  Globe,
+  Loader2,
+  Languages,
 } from "lucide-react";
 
 const SECTION_LABELS: Record<string, string> = {
@@ -42,6 +45,15 @@ const SECTION_ORDER = [
   "key_takeaways",
 ];
 
+const AVAILABLE_LANGUAGES = [
+  { code: "English", label: "English", icon: "🇬🇧" },
+  { code: "Hinglish", label: "Hinglish", icon: "🇮🇳" },
+  { code: "Hindi", label: "हिंदी (Hindi)", icon: "🇮🇳" },
+  { code: "Tamil", label: "தமிழ் (Tamil)", icon: "🇮🇳" },
+  { code: "Telugu", label: "తెలుగు (Telugu)", icon: "🇮🇳" },
+  { code: "Marathi", label: "मराठी (Marathi)", icon: "🇮🇳" },
+];
+
 export default function LessonPage() {
   return (
     <ProtectedRoute>
@@ -58,6 +70,9 @@ function LessonReader() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [lesson, setLesson] = useState<LessonItem | null>(null);
+  const [activeContent, setActiveContent] = useState<Record<string, string | string[]> | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("English");
+  const [translating, setTranslating] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -70,11 +85,34 @@ function LessonReader() {
         const allLessons = c.modules?.flatMap((m) => m.lessons) ?? [];
         const found = allLessons.find((l) => l.id === lessonId);
         setLesson(found ?? null);
+        setActiveContent(found?.content as Record<string, string | string[]> ?? null);
         setIsCompleted(!!found?.is_completed);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [courseId, lessonId]);
+
+  const handleLanguageChange = async (newLang: string) => {
+    if (newLang === selectedLanguage) return;
+    setSelectedLanguage(newLang);
+
+    if (newLang === "English") {
+      if (lesson) setActiveContent(lesson.content as Record<string, string | string[]>);
+      return;
+    }
+
+    setTranslating(true);
+    try {
+      const res = await translateLesson(courseId, lessonId, newLang);
+      setActiveContent(res.content as Record<string, string | string[]>);
+    } catch (e: any) {
+      alert(`Translation failed: ${e?.message || "Please check Gemini API key"}`);
+      setSelectedLanguage("English");
+      if (lesson) setActiveContent(lesson.content as Record<string, string | string[]>);
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const handleToggleComplete = async () => {
     setToggling(true);
@@ -97,12 +135,12 @@ function LessonReader() {
   const nextLesson = allLessons[currentIdx + 1] ?? null;
   const prevLesson = allLessons[currentIdx - 1] ?? null;
 
-  const content = lesson.content as Record<string, string | string[]>;
+  const content = activeContent || (lesson.content as Record<string, string | string[]>);
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 pb-24">
       {/* Breadcrumb & Quick Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <Link href={`/course/${courseId}`} className="hover:text-indigo-600 truncate max-w-[200px]">
             {course.title}
@@ -141,6 +179,54 @@ function LessonReader() {
           </Button>
         </div>
       </div>
+
+      {/* Multi-Lingual Language Switcher Bar */}
+      <div className="bg-slate-900/95 text-slate-200 border border-slate-800 rounded-xl p-3 mb-6 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
+          <Languages className="w-4 h-4 text-indigo-400" />
+          <span>Lesson Language:</span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {AVAILABLE_LANGUAGES.map((lang) => {
+            const isSelected = selectedLanguage === lang.code;
+            return (
+              <button
+                key={lang.code}
+                onClick={() => handleLanguageChange(lang.code)}
+                disabled={translating}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
+                  isSelected
+                    ? "bg-indigo-600 text-white shadow-sm font-semibold"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700/50"
+                }`}
+              >
+                <span>{lang.icon}</span>
+                <span>{lang.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {translating && (
+        <div className="mb-6 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 flex items-center justify-center gap-2.5 text-xs font-medium animate-pulse">
+          <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+          <span>Synthesizing lesson explanation in {selectedLanguage} with AI...</span>
+        </div>
+      )}
+
+      {selectedLanguage !== "English" && !translating && (
+        <div className="mb-6 px-3.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center justify-between text-xs">
+          <span>✓ Explaining in <strong>{selectedLanguage}</strong> (AI-Adapted)</span>
+          <button
+            onClick={() => handleLanguageChange("English")}
+            className="underline hover:text-white font-medium ml-2"
+          >
+            Switch to Original English
+          </button>
+        </div>
+      )}
 
       {/* Lesson Header */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 mb-8 shadow-xs">
