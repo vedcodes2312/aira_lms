@@ -37,6 +37,11 @@ import {
   Sparkles,
   HelpCircle,
   ExternalLink,
+  ChevronRight,
+  Copy,
+  Check,
+  X,
+  FileText,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -70,9 +75,30 @@ function AdminPanel() {
   const [selectedTable, setSelectedTable] = useState<string>("courses");
   const [tableData, setTableData] = useState<DbTableData | null>(null);
   const [loadingTable, setLoadingTable] = useState(false);
+  const [cellModal, setCellModal] = useState<{
+    tableName: string;
+    column: string;
+    value: string;
+    isJson: boolean;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const tryFormatJson = (val: string) => {
+    if (!val) return null;
+    const trimmed = val.trim();
+    if (!((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]")))) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(val);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return null;
+    }
+  };
 
   // Verify Admin Access
   useEffect(() => {
@@ -407,9 +433,28 @@ function AdminPanel() {
                       </td>
                       <td className="p-3">{c.total_lessons} Lessons</td>
                       <td className="p-3">
-                        <span className="font-semibold text-indigo-700">
-                          {c.completed_lessons}/{c.total_lessons} ({c.progress_percentage}%)
-                        </span>
+                        <div className="w-36 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-semibold text-slate-700">
+                              {c.completed_lessons}/{c.total_lessons}
+                            </span>
+                            <span className={`font-bold ${c.progress_percentage === 100 ? "text-emerald-600" : "text-indigo-600"}`}>
+                              {c.progress_percentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200/80">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                c.progress_percentage === 100
+                                  ? "bg-emerald-500"
+                                  : c.progress_percentage > 0
+                                  ? "bg-indigo-600"
+                                  : "bg-slate-200"
+                              }`}
+                              style={{ width: `${Math.max(c.progress_percentage, 0)}%` }}
+                            />
+                          </div>
+                        </div>
                       </td>
                       <td className="p-3">
                         {c.badge_name ? (
@@ -523,9 +568,6 @@ function AdminPanel() {
                 <Database className="w-4 h-4" /> SQLite Direct File Inspector
               </div>
               <h3 className="text-xl font-bold text-white">aira.db Visualizer</h3>
-              <p className="text-xs text-slate-400 mt-1 font-mono">
-                Location: c:\Users\Ved\OneDrive\Desktop\myfolder3\aira\backend\aira.db
-              </p>
             </div>
             <div className="text-xs text-slate-400 bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700">
               ⚡ Real-time query execution via SQLAlchemy
@@ -592,24 +634,139 @@ function AdminPanel() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700 font-mono text-[11px]">
                     {tableData.rows.map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-slate-50/70">
-                        {tableData.columns.map((col) => (
-                          <td key={col} className="p-2.5 whitespace-nowrap max-w-xs truncate">
-                            {row[col] === null ? (
-                              <span className="text-slate-300 italic">null</span>
-                            ) : typeof row[col] === "boolean" ? (
-                              row[col] ? "true" : "false"
-                            ) : (
-                              String(row[col])
-                            )}
-                          </td>
-                        ))}
+                      <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
+                        {tableData.columns.map((col) => {
+                          const val = row[col];
+                          const isNull = val === null;
+                          const isBool = typeof val === "boolean";
+                          const strVal = isNull ? "" : String(val);
+                          const formattedJson = tryFormatJson(strVal);
+                          const isLong = strVal.length > 25 || formattedJson !== null;
+
+                          return (
+                            <td key={col} className="p-2.5 whitespace-nowrap max-w-[260px]">
+                              {isNull ? (
+                                <span className="text-slate-300 italic">null</span>
+                              ) : isBool ? (
+                                <span className={val ? "text-emerald-600 font-semibold" : "text-slate-400"}>
+                                  {val ? "true" : "false"}
+                                </span>
+                              ) : isLong ? (
+                                <div className="flex items-center justify-between gap-1.5 group/cell">
+                                  <span className="truncate max-w-[180px] text-slate-700" title={strVal}>
+                                    {strVal}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      setCellModal({
+                                        tableName: selectedTable,
+                                        column: col,
+                                        value: formattedJson || strVal,
+                                        isJson: formattedJson !== null,
+                                      });
+                                      setCopied(false);
+                                    }}
+                                    title="show description"
+                                    aria-label="show description"
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition-all border border-indigo-200/80 cursor-pointer shrink-0 shadow-2xs group-hover/cell:opacity-100 opacity-70 hover:scale-105"
+                                  >
+                                    <span>View</span>
+                                    <ChevronRight className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-slate-700">{strVal}</span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Full Content & JSON Inspector Modal */}
+      {cellModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <span>Field Description & Content</span>
+                    <span className="px-2 py-0.5 text-[10px] rounded-md font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {cellModal.tableName}.{cellModal.column}
+                    </span>
+                    {cellModal.isJson && (
+                      <span className="px-1.5 py-0.5 text-[9px] rounded font-mono bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                        Formatted JSON
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500">Inspect complete database record</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCellModal(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-950 font-mono text-xs text-emerald-400 select-text">
+              <pre className="whitespace-pre-wrap break-words leading-relaxed">
+                {cellModal.value}
+              </pre>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-white flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">
+                Length: {cellModal.value.length} characters
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(cellModal.value);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="text-xs flex items-center gap-1.5"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-600 font-bold">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Content</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setCellModal(null)}
+                  className="text-xs bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -189,6 +189,8 @@ def get_database_tables(
         "quiz_attempts",
         "badges",
         "lesson_progress",
+        "certificates",
+        "lesson_translations",
     ]
     summary = []
     for t in tables:
@@ -213,6 +215,8 @@ def get_table_data(
         "quiz_attempts",
         "badges",
         "lesson_progress",
+        "certificates",
+        "lesson_translations",
     ]
     if table_name not in valid_tables:
         raise HTTPException(status_code=400, detail="Invalid table name")
@@ -228,11 +232,9 @@ def get_table_data(
         row_dict = {}
         for idx, col in enumerate(columns):
             val = r[idx]
-            # Format long JSON or password hash for safety/cleanliness
+            # Mask password hash for safety
             if col == "password_hash":
                 row_dict[col] = "•••••••• [bcrypt hash]"
-            elif isinstance(val, str) and len(val) > 200:
-                row_dict[col] = val[:200] + "…"
             else:
                 row_dict[col] = val
         rows.append(row_dict)
