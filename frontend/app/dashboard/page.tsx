@@ -20,6 +20,7 @@ import {
   GraduationCap,
   Atom,
   Cpu,
+  UserCircle,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -59,13 +60,23 @@ function Dashboard() {
             Track your course progress, spaced repetition decks, and mastery badges.
           </p>
         </div>
-        <button
-          id="new-course-btn"
-          onClick={() => router.push("/generate")}
-          className="inline-flex items-center gap-2 btn-primary px-5 py-2.5 rounded-xl font-semibold shadow-sm"
-        >
-          <Plus className="w-4 h-4" /> Generate New Course
-        </button>
+        <div className="flex items-center gap-2.5">
+          <Link
+            href="/profile"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-semibold text-xs bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-all hover:border-indigo-300"
+          >
+            <UserCircle className="w-4 h-4 text-indigo-600" />
+            <span>My Profile & Settings</span>
+          </Link>
+
+          <button
+            id="new-course-btn"
+            onClick={() => router.push("/generate")}
+            className="inline-flex items-center gap-2 btn-primary px-5 py-2.5 rounded-xl font-semibold shadow-sm text-xs"
+          >
+            <Plus className="w-4 h-4" /> Generate New Course
+          </button>
+        </div>
       </div>
 
       {loading && <p className="text-slate-500 text-sm py-12 text-center">Loading your learning space…</p>}

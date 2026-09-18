@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getCourse, Course } from "@/lib/api";
+import { getCourse, enrollInCourse, Course } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,8 @@ import {
   BookOpen,
   ArrowLeft,
   GraduationCap,
+  Plus,
+  Check,
 } from "lucide-react";
 
 export default function CourseOverviewPage() {
@@ -37,6 +39,8 @@ function CourseOverview() {
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [enrolledMsg, setEnrolledMsg] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
     getCourse(courseId)
@@ -44,6 +48,19 @@ function CourseOverview() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [courseId]);
+
+  const handleEnroll = async () => {
+    setEnrolling(true);
+    try {
+      const res = await enrollInCourse(courseId);
+      setEnrolledMsg(res.message);
+      setTimeout(() => setEnrolledMsg(null), 3500);
+    } catch (err: any) {
+      alert(err.message || "Failed to enroll in course.");
+    } finally {
+      setEnrolling(false);
+    }
+  };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading course…</div>;
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
@@ -57,8 +74,8 @@ function CourseOverview() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 pb-20">
-      {/* Back to Dashboard */}
-      <div className="flex items-center justify-between mb-6">
+      {/* Back & Action Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-700"
@@ -67,12 +84,34 @@ function CourseOverview() {
           <ArrowLeft className="w-4 h-4" /> Back to Dashboard
         </Link>
 
-        <Link href={`/course/${courseId}/flashcards`}>
-          <Button variant="outline" size="sm" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-            <Layers className="w-4 h-4 mr-1.5 text-indigo-600" />
-            Practice Flashcards
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleEnroll}
+            disabled={enrolling}
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 text-xs"
+          >
+            {enrolledMsg ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" />
+                <span className="text-emerald-700 font-bold">Enrolled!</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-3.5 h-3.5 text-indigo-600 mr-1" />
+                <span>Enroll in Course</span>
+              </>
+            )}
           </Button>
-        </Link>
+
+          <Link href={`/course/${courseId}/flashcards`}>
+            <Button variant="outline" size="sm" className="bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs">
+              <Layers className="w-4 h-4 mr-1.5 text-indigo-600" />
+              Practice Flashcards
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Header Card */}

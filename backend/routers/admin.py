@@ -191,6 +191,7 @@ def get_database_tables(
         "lesson_progress",
         "certificates",
         "lesson_translations",
+        "enrollments",
     ]
     summary = []
     for t in tables:
@@ -217,6 +218,7 @@ def get_table_data(
         "lesson_progress",
         "certificates",
         "lesson_translations",
+        "enrollments",
     ]
     if table_name not in valid_tables:
         raise HTTPException(status_code=400, detail="Invalid table name")

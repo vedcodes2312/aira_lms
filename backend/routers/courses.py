@@ -16,6 +16,7 @@ from database import (
     Badge,
     Certificate,
     LessonTranslation,
+    Enrollment,
 )
 from schemas import (
     GenerateCourseRequest,
@@ -33,6 +34,8 @@ from schemas import (
     PublicCertificateVerification,
     LessonTranslateRequest,
     LessonTranslateResponse,
+    ExploreCourseItem,
+    EnrollCourseResponse,
 )
 from auth import get_current_user
 from llm import generate_course
@@ -147,12 +150,154 @@ def _serialize_course(course: Course, user_id: int, db: Session) -> CourseDetail
     )
 
 
-@router.get("", response_model=list[CourseSummary])
-def list_courses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    courses = db.query(Course).filter(Course.user_id == current_user.id).order_by(Course.created_at.desc()).all()
+@router.get("/explore", response_model=List[ExploreCourseItem])
+def explore_courses(
+    search: Optional[str] = None,
+    domain: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Search and explore all AI-generated courses across the platform with creator details and enrollment status."""
+    query = db.query(Course)
+
+    if domain and domain.lower() != "all":
+        query = query.filter(Course.domain.ilike(f"%{domain}%"))
+
+    if difficulty and difficulty.lower() != "all":
+        query = query.filter(Course.difficulty.ilike(f"%{difficulty}%"))
+
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        query = query.join(User, Course.user_id == User.id).filter(
+            (Course.title.ilike(s))
+            | (Course.topic.ilike(s))
+            | (Course.description.ilike(s))
+            | (Course.domain.ilike(s))
+            | (User.username.ilike(s))
+            | (User.full_name.ilike(s))
+        )
+
+    courses = query.order_by(Course.created_at.desc()).all()
+
+    # Get user enrollments
+    user_enrolled_ids = set()
+    if current_user:
+        enrollments = db.query(Enrollment.course_id).filter(Enrollment.user_id == current_user.id).all()
+        user_enrolled_ids = {e[0] for e in enrollments}
+
     results = []
     for c in courses:
-        # Calculate summary progress
+        creator = db.query(User).filter(User.id == c.user_id).first()
+        all_lessons = [les for mod in c.modules for les in mod.lessons]
+        total_lessons = len(all_lessons)
+        total_modules = len(c.modules)
+
+        # Enrolled count (creators + enrollments)
+        enrolled_count = db.query(Enrollment).filter(Enrollment.course_id == c.id).count() + 1
+
+        is_creator = current_user.id == c.user_id if current_user else False
+        is_enrolled = is_creator or (c.id in user_enrolled_ids)
+
+        # Calculate current user's progress
+        progress_pct = 0
+        badge_name = None
+        if current_user and is_enrolled and total_lessons > 0:
+            completed_count = (
+                db.query(LessonProgress)
+                .filter(
+                    LessonProgress.course_id == c.id,
+                    LessonProgress.user_id == current_user.id,
+                    LessonProgress.completed == 1,
+                )
+                .count()
+            )
+            progress_pct = int((completed_count / total_lessons * 100))
+            b = db.query(Badge).filter(Badge.course_id == c.id, Badge.user_id == current_user.id).first()
+            if b:
+                badge_name = b.name
+
+        results.append(
+            ExploreCourseItem(
+                id=c.id,
+                domain=c.domain,
+                topic=c.topic,
+                title=c.title,
+                description=c.description,
+                difficulty=c.difficulty or "Beginner",
+                creator_id=c.user_id,
+                creator_username=creator.username if creator else "community",
+                creator_avatar=creator.avatar_url if (creator and creator.avatar_url) else "bot-1",
+                created_at=c.created_at,
+                total_lessons=total_lessons,
+                total_modules=total_modules,
+                enrolled_count=enrolled_count,
+                is_enrolled=is_enrolled,
+                progress_percentage=progress_pct,
+                badge_name=badge_name,
+                is_creator=is_creator,
+                is_ai_generated=True,
+            )
+        )
+    return results
+
+
+@router.post("/{course_id}/enroll", response_model=EnrollCourseResponse)
+def enroll_in_course(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Enroll the current user into an existing course so they track their own independent progress from scratch."""
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    if course.user_id == current_user.id:
+        return EnrollCourseResponse(
+            message="You are the creator of this course and are already enrolled.",
+            enrolled=True,
+            course_id=course.id,
+        )
+
+    existing = db.query(Enrollment).filter(
+        Enrollment.user_id == current_user.id,
+        Enrollment.course_id == course_id
+    ).first()
+
+    if existing:
+        return EnrollCourseResponse(
+            message=f"You are already enrolled in '{course.title}'.",
+            enrolled=True,
+            course_id=course.id,
+        )
+
+    enrollment = Enrollment(user_id=current_user.id, course_id=course_id)
+    db.add(enrollment)
+    db.commit()
+
+    return EnrollCourseResponse(
+        message=f"Successfully enrolled in '{course.title}'! Your personal progress has started.",
+        enrolled=True,
+        course_id=course.id,
+    )
+
+
+@router.get("", response_model=list[CourseSummary])
+def list_courses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all courses created by or enrolled by the current user with real-time personal progress."""
+    created_courses = db.query(Course).filter(Course.user_id == current_user.id).all()
+    created_ids = {c.id for c in created_courses}
+
+    enrollments = db.query(Enrollment).filter(Enrollment.user_id == current_user.id).all()
+    enrolled_ids = [e.course_id for e in enrollments if e.course_id not in created_ids]
+    enrolled_courses = db.query(Course).filter(Course.id.in_(enrolled_ids)).all() if enrolled_ids else []
+
+    all_courses = created_courses + enrolled_courses
+    all_courses.sort(key=lambda x: x.created_at, reverse=True)
+
+    results = []
+    for c in all_courses:
         all_lessons = [les for mod in c.modules for les in mod.lessons]
         total_lessons = len(all_lessons)
         lesson_ids = [les.id for les in all_lessons]
@@ -280,11 +425,7 @@ def get_course(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.is_admin:
-        course = db.query(Course).filter(Course.id == course_id).first()
-    else:
-        course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
-
+    course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     return _serialize_course(course, current_user.id, db)
@@ -297,7 +438,7 @@ def toggle_lesson_complete(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
@@ -356,7 +497,7 @@ def submit_quiz_attempt(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
@@ -483,10 +624,7 @@ def get_course_flashcards(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.is_admin:
-        course = db.query(Course).filter(Course.id == course_id).first()
-    else:
-        course = db.query(Course).filter(Course.id == course_id, Course.user_id == current_user.id).first()
+    course = db.query(Course).filter(Course.id == course_id).first()
 
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -579,8 +717,14 @@ def get_or_issue_certificate(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    if not current_user.is_admin and course.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this course certificate")
+    # Check authorization (creator, admin, or enrolled)
+    is_enrolled = (course.user_id == current_user.id) or db.query(Enrollment).filter(
+        Enrollment.user_id == current_user.id,
+        Enrollment.course_id == course_id
+    ).first() is not None
+
+    if not current_user.is_admin and not is_enrolled:
+        raise HTTPException(status_code=403, detail="Please enroll in this course to earn a certificate")
 
     # Check progress
     all_lessons = [les.id for mod in course.modules for les in mod.lessons]

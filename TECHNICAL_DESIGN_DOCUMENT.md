@@ -125,6 +125,9 @@ erDiagram
         int id PK "Auto Increment"
         string username UK "Unique Learner Handle"
         string password_hash "Bcrypt Salted Hash"
+        string full_name "Full Display Name"
+        string bio "Learner Headline & Bio"
+        string avatar_url "Avatar Identifier"
         string profession "e.g. Developer, Teacher, Doctor"
         string knowledge_level "Beginner | Intermediate | Advanced"
         string learning_domain "AI | Quantum Computing"
@@ -133,6 +136,12 @@ erDiagram
         int onboarding_done "0 or 1"
         int is_admin "0: User, 1: Super Admin"
         string preferred_language "en | hi-en | hi | ta | te | mr"
+        int is_public "1: Public Showcase, 0: Private"
+        int show_real_name "1: Show Name, 0: Username only"
+        int show_courses "1: Show Courses, 0: Hide"
+        int show_badges "1: Show Badges, 0: Hide"
+        int show_certificates "1: Show Certs, 0: Hide"
+        int show_interests "1: Show Goals, 0: Hide"
         datetime created_at "ISO-8601 Timestamp"
     }
 
@@ -626,6 +635,9 @@ graph TB
 | `/courses/{id}/certificate` | `GET` | User/Admin | Issue or fetch verifiable Certificate & LinkedIn link |
 | `/courses/public/verify-certificate/{uuid}` | `GET` | Public | Cryptographic certificate verification endpoint |
 | `/courses/{id}/lessons/{lid}/translate` | `POST` | User | Translate lesson to Hinglish, Hindi, Tamil, Telugu, etc. |
+| `/profile/me` | `GET` | User | Fetch personal details, learning persona & privacy toggles |
+| `/profile/me` | `PUT` | User | Update display name, bio, avatar, domain & showcase privacy |
+| `/profile/public/{username}` | `GET` | Public | Public showcase endpoint honoring learner privacy settings |
 | `/admin/stats` | `GET` | Admin | Platform KPI analytics (users, courses, badges, avg scores) |
 | `/admin/courses` | `GET` | Admin | All platform courses with progress & creator usernames |
 | `/admin/courses/{id}` | `DELETE` | Admin | Cascade-delete any user's course |

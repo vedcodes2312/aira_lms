@@ -196,3 +196,148 @@ class LessonTranslateResponse(BaseModel):
     language: str
     content: dict
     is_cached: bool = False
+
+
+# ── Profile & Privacy Settings ────────────────────────────────────────────────
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    profession: Optional[str] = None
+    knowledge_level: Optional[str] = None
+    learning_domain: Optional[str] = None
+    learning_goal: Optional[str] = None
+    explanation_style: Optional[str] = None
+    preferred_language: Optional[str] = None
+    is_public: Optional[bool] = None
+    show_real_name: Optional[bool] = None
+    show_courses: Optional[bool] = None
+    show_badges: Optional[bool] = None
+    show_certificates: Optional[bool] = None
+    show_interests: Optional[bool] = None
+
+
+class UserProfileResponse(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = "bot-1"
+    profession: Optional[str] = None
+    knowledge_level: Optional[str] = None
+    learning_domain: Optional[str] = None
+    learning_goal: Optional[str] = None
+    explanation_style: Optional[str] = None
+    preferred_language: Optional[str] = "English"
+    is_admin: bool = False
+    onboarding_done: bool = False
+    created_at: Optional[datetime] = None
+    
+    # Privacy
+    is_public: bool = True
+    show_real_name: bool = True
+    show_courses: bool = True
+    show_badges: bool = True
+    show_certificates: bool = True
+    show_interests: bool = True
+
+    # Stats
+    total_courses: int = 0
+    completed_courses: int = 0
+    total_badges: int = 0
+    total_certificates: int = 0
+
+
+class PublicCourseItem(BaseModel):
+    id: int
+    title: str
+    domain: str
+    topic: str
+    difficulty: Optional[str]
+    total_lessons: int
+    completed_lessons: int
+    progress_percentage: int
+    badge_name: Optional[str] = None
+
+
+class PublicBadgeItem(BaseModel):
+    id: int
+    name: str
+    domain: str
+    description: str
+    icon: str
+    earned_at: datetime
+
+
+class PublicCertItem(BaseModel):
+    cert_uuid: str
+    course_title: str
+    domain: str
+    badge_name: Optional[str] = None
+    score_percentage: int
+    issued_at: datetime
+    verification_url: str
+
+
+class PublicProfileResponse(BaseModel):
+    is_public: bool
+    username: str
+    display_name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = "bot-1"
+    profession: Optional[str] = None
+    member_since: Optional[datetime] = None
+    
+    # Interests
+    show_interests: bool = False
+    learning_domain: Optional[str] = None
+    knowledge_level: Optional[str] = None
+    learning_goal: Optional[str] = None
+    explanation_style: Optional[str] = None
+    
+    # Showcases
+    show_courses: bool = False
+    courses: List[PublicCourseItem] = []
+    
+    show_badges: bool = False
+    badges: List[PublicBadgeItem] = []
+    
+    show_certificates: bool = False
+    certificates: List[PublicCertItem] = []
+    
+    # Aggregate Stats
+    total_courses: int = 0
+    completed_courses: int = 0
+    total_badges: int = 0
+    total_certificates: int = 0
+
+
+# ── Course Search & Explore ───────────────────────────────────────────────────
+
+class ExploreCourseItem(BaseModel):
+    id: int
+    domain: str
+    topic: str
+    title: str
+    description: str
+    difficulty: Optional[str] = "Beginner"
+    creator_id: int
+    creator_username: str
+    creator_avatar: Optional[str] = "bot-1"
+    created_at: datetime
+    total_lessons: int
+    total_modules: int
+    enrolled_count: int
+    is_enrolled: bool = False
+    progress_percentage: int = 0
+    badge_name: Optional[str] = None
+    is_creator: bool = False
+    is_ai_generated: bool = True
+
+
+class EnrollCourseResponse(BaseModel):
+    message: str
+    enrolled: bool
+    course_id: int
+

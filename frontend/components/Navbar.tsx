@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { clearToken, isLoggedIn, getMe } from "@/lib/api";
-import { ShieldCheck, LogOut, BookOpen, Plus, LayoutDashboard } from "lucide-react";
+import { ShieldCheck, LogOut, BookOpen, Plus, LayoutDashboard, UserCircle, Compass } from "lucide-react";
 
 export default function Navbar() {
   const router = useRouter();
@@ -58,6 +58,16 @@ export default function Navbar() {
             </Link>
 
             <Link
+              href="/explore"
+              className={`hover:text-indigo-400 transition-colors flex items-center gap-1.5 ${
+                pathname === "/explore" ? "text-indigo-400 font-bold" : "text-slate-300"
+              }`}
+            >
+              <Compass className="w-4 h-4" />
+              <span className="hidden sm:inline">Explore</span>
+            </Link>
+
+            <Link
               href="/generate"
               className={`hover:text-indigo-400 transition-colors flex items-center gap-1.5 ${
                 pathname === "/generate" ? "text-indigo-400 font-bold" : "text-slate-300"
@@ -65,6 +75,16 @@ export default function Navbar() {
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">New Course</span>
+            </Link>
+
+            <Link
+              href="/profile"
+              className={`hover:text-indigo-400 transition-colors flex items-center gap-1.5 ${
+                pathname === "/profile" ? "text-indigo-400 font-bold" : "text-slate-300"
+              }`}
+            >
+              <UserCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Profile</span>
             </Link>
 
             {isAdmin && (
@@ -92,6 +112,13 @@ export default function Navbar() {
           </>
         ) : (
           <>
+            <Link
+              href="/explore"
+              className="text-slate-300 hover:text-white transition flex items-center gap-1"
+            >
+              <Compass className="w-4 h-4" />
+              <span>Explore Courses</span>
+            </Link>
             <Link href="/login" className="text-slate-300 hover:text-white transition">
               Sign In
             </Link>

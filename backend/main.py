@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_tables
-from routers import auth, onboarding, topics, courses, admin
+from routers import auth, onboarding, topics, courses, admin, profile
 
 app = FastAPI(title="AIRA API", version="0.1.0")
 
@@ -23,6 +23,7 @@ app.include_router(onboarding.router)
 app.include_router(topics.router)
 app.include_router(courses.router)
 app.include_router(admin.router)
+app.include_router(profile.router)
 
 
 @app.get("/")

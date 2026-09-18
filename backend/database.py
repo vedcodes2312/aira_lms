@@ -19,13 +19,26 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    bio = Column(Text, nullable=True)
+    avatar_url = Column(String, nullable=True)  # Preset identifier or emoji
     profession = Column(String, nullable=True)
     knowledge_level = Column(String, nullable=True)
     learning_domain = Column(String, nullable=True)
     learning_goal = Column(String, nullable=True)
     explanation_style = Column(String, nullable=True)
+    preferred_language = Column(String, default="English")
     onboarding_done = Column(Integer, default=0)  # 0 = not done, 1 = done
     is_admin = Column(Integer, default=0)  # 0 = user, 1 = admin
+    
+    # Public Profile Privacy Controls (1 = Visible, 0 = Hidden)
+    is_public = Column(Integer, default=1)
+    show_real_name = Column(Integer, default=1)
+    show_courses = Column(Integer, default=1)
+    show_badges = Column(Integer, default=1)
+    show_certificates = Column(Integer, default=1)
+    show_interests = Column(Integer, default=1)
+    
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     courses = relationship("Course", back_populates="user")
@@ -148,6 +161,15 @@ class LessonTranslation(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class Enrollment(Base):
+    __tablename__ = "enrollments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    enrolled_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -164,12 +186,24 @@ def create_tables():
         from sqlalchemy import text
         res = conn.execute(text("PRAGMA table_info(users)"))
         user_cols = [row[1] for row in res.fetchall()]
-        if "is_admin" not in user_cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
-            conn.commit()
-        if "preferred_language" not in user_cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN preferred_language VARCHAR DEFAULT 'English'"))
-            conn.commit()
+        
+        migration_map = {
+            "full_name": "ALTER TABLE users ADD COLUMN full_name VARCHAR",
+            "bio": "ALTER TABLE users ADD COLUMN bio TEXT",
+            "avatar_url": "ALTER TABLE users ADD COLUMN avatar_url VARCHAR DEFAULT 'bot-1'",
+            "is_admin": "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0",
+            "preferred_language": "ALTER TABLE users ADD COLUMN preferred_language VARCHAR DEFAULT 'English'",
+            "is_public": "ALTER TABLE users ADD COLUMN is_public INTEGER DEFAULT 1",
+            "show_real_name": "ALTER TABLE users ADD COLUMN show_real_name INTEGER DEFAULT 1",
+            "show_courses": "ALTER TABLE users ADD COLUMN show_courses INTEGER DEFAULT 1",
+            "show_badges": "ALTER TABLE users ADD COLUMN show_badges INTEGER DEFAULT 1",
+            "show_certificates": "ALTER TABLE users ADD COLUMN show_certificates INTEGER DEFAULT 1",
+            "show_interests": "ALTER TABLE users ADD COLUMN show_interests INTEGER DEFAULT 1",
+        }
+        for col_name, stmt in migration_map.items():
+            if col_name not in user_cols:
+                conn.execute(text(stmt))
+                conn.commit()
 
         res_c = conn.execute(text("PRAGMA table_info(courses)"))
         course_cols = [row[1] for row in res_c.fetchall()]
