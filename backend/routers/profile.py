@@ -12,8 +12,9 @@ from database import (
     LessonProgress,
     Badge,
     Certificate,
+    Follow,
 )
-from auth import get_current_user
+from auth import get_current_user, get_optional_current_user
 from schemas import (
     UserProfileUpdate,
     UserProfileResponse,
@@ -21,6 +22,8 @@ from schemas import (
     PublicCourseItem,
     PublicBadgeItem,
     PublicCertItem,
+    FollowUserItem,
+    FollowActionResponse,
 )
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -55,6 +58,10 @@ def get_my_profile(
 
     total_badges = db.query(Badge).filter(Badge.user_id == current_user.id).count()
     total_certificates = db.query(Certificate).filter(Certificate.user_id == current_user.id).count()
+    
+    # Followers & Following counts
+    followers_count = db.query(Follow).filter(Follow.following_id == current_user.id).count()
+    following_count = db.query(Follow).filter(Follow.follower_id == current_user.id).count()
 
     return UserProfileResponse(
         id=current_user.id,
@@ -81,6 +88,8 @@ def get_my_profile(
         completed_courses=completed_courses,
         total_badges=total_badges,
         total_certificates=total_certificates,
+        followers_count=followers_count,
+        following_count=following_count,
     )
 
 
@@ -133,9 +142,10 @@ def update_my_profile(
 @router.get("/public/{username}", response_model=PublicProfileResponse)
 def get_public_profile(
     username: str,
+    optional_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
-    """Public endpoint to view a learner's showcase profile honoring their privacy settings."""
+    """Public endpoint to view a learner's showcase profile honoring privacy settings and follow status."""
     user = db.query(User).filter(User.username.ilike(username.strip())).first()
     if not user:
         raise HTTPException(
@@ -143,13 +153,30 @@ def get_public_profile(
             detail=f"User '@{username}' not found on AIRA",
         )
 
+    # Followers & Following counts
+    followers_count = db.query(Follow).filter(Follow.following_id == user.id).count()
+    following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
+
+    is_me = bool(optional_user and optional_user.id == user.id)
+    is_following = False
+    if optional_user and not is_me:
+        is_following = bool(
+            db.query(Follow)
+            .filter(Follow.follower_id == optional_user.id, Follow.following_id == user.id)
+            .first()
+        )
+
     # Check if profile is public
     is_public = bool(user.is_public if user.is_public is not None else 1)
-    if not is_public:
+    if not is_public and not is_me:
         return PublicProfileResponse(
             is_public=False,
             username=user.username,
             avatar_url=user.avatar_url or "bot-1",
+            followers_count=followers_count,
+            following_count=following_count,
+            is_following=is_following,
+            is_me=is_me,
         )
 
     # Display name logic
@@ -247,6 +274,10 @@ def get_public_profile(
         avatar_url=user.avatar_url or "bot-1",
         profession=user.profession,
         member_since=user.created_at,
+        followers_count=followers_count,
+        following_count=following_count,
+        is_following=is_following,
+        is_me=is_me,
         show_interests=show_interests,
         learning_domain=user.learning_domain if show_interests else None,
         knowledge_level=user.knowledge_level if show_interests else None,
@@ -263,3 +294,205 @@ def get_public_profile(
         total_badges=total_badges,
         total_certificates=total_certificates,
     )
+
+
+# ── Follow, Unfollow & Follower Management Endpoints ──────────────────────────
+
+@router.post("/{username}/follow", response_model=FollowActionResponse)
+def follow_user(
+    username: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Follow a user by username."""
+    target_user = db.query(User).filter(User.username.ilike(username.strip())).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail=f"User '@{username}' not found")
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot follow yourself")
+
+    existing_follow = (
+        db.query(Follow)
+        .filter(Follow.follower_id == current_user.id, Follow.following_id == target_user.id)
+        .first()
+    )
+
+    if not existing_follow:
+        new_follow = Follow(follower_id=current_user.id, following_id=target_user.id)
+        db.add(new_follow)
+        db.commit()
+
+    followers_count = db.query(Follow).filter(Follow.following_id == target_user.id).count()
+    following_count = db.query(Follow).filter(Follow.follower_id == target_user.id).count()
+
+    return FollowActionResponse(
+        success=True,
+        message=f"You are now following @{target_user.username}",
+        is_following=True,
+        followers_count=followers_count,
+        following_count=following_count,
+    )
+
+
+@router.post("/{username}/unfollow", response_model=FollowActionResponse)
+def unfollow_user(
+    username: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Unfollow a user by username."""
+    target_user = db.query(User).filter(User.username.ilike(username.strip())).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail=f"User '@{username}' not found")
+
+    follow_record = (
+        db.query(Follow)
+        .filter(Follow.follower_id == current_user.id, Follow.following_id == target_user.id)
+        .first()
+    )
+
+    if follow_record:
+        db.delete(follow_record)
+        db.commit()
+
+    followers_count = db.query(Follow).filter(Follow.following_id == target_user.id).count()
+    following_count = db.query(Follow).filter(Follow.follower_id == target_user.id).count()
+
+    return FollowActionResponse(
+        success=True,
+        message=f"You have unfollowed @{target_user.username}",
+        is_following=False,
+        followers_count=followers_count,
+        following_count=following_count,
+    )
+
+
+@router.delete("/followers/{follower_id}")
+def remove_follower(
+    follower_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a follower from following the current user ('delete followers')."""
+    follow_record = (
+        db.query(Follow)
+        .filter(Follow.follower_id == follower_id, Follow.following_id == current_user.id)
+        .first()
+    )
+
+    if not follow_record:
+        raise HTTPException(status_code=404, detail="Follower relationship not found")
+
+    db.delete(follow_record)
+    db.commit()
+
+    new_followers_count = db.query(Follow).filter(Follow.following_id == current_user.id).count()
+
+    return {
+        "success": True,
+        "message": "Follower removed successfully",
+        "followers_count": new_followers_count,
+    }
+
+
+@router.get("/{username}/followers", response_model=List[FollowUserItem])
+def get_user_followers(
+    username: str,
+    optional_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all learners following the specified user."""
+    target_user = db.query(User).filter(User.username.ilike(username.strip())).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail=f"User '@{username}' not found")
+
+    follows = (
+        db.query(Follow)
+        .filter(Follow.following_id == target_user.id)
+        .order_by(Follow.created_at.desc())
+        .all()
+    )
+
+    results: List[FollowUserItem] = []
+    for f in follows:
+        u = db.query(User).filter(User.id == f.follower_id).first()
+        if not u:
+            continue
+
+        is_me = bool(optional_user and optional_user.id == u.id)
+        is_following = False
+        if optional_user and not is_me:
+            is_following = bool(
+                db.query(Follow)
+                .filter(Follow.follower_id == optional_user.id, Follow.following_id == u.id)
+                .first()
+            )
+
+        results.append(
+            FollowUserItem(
+                id=u.id,
+                username=u.username,
+                full_name=u.full_name if (u.show_real_name if u.show_real_name is not None else 1) else None,
+                avatar_url=u.avatar_url or "bot-1",
+                bio=u.bio,
+                profession=u.profession,
+                learning_domain=u.learning_domain if (u.show_interests if u.show_interests is not None else 1) else None,
+                is_following=is_following,
+                is_me=is_me,
+                followed_at=f.created_at,
+            )
+        )
+
+    return results
+
+
+@router.get("/{username}/following", response_model=List[FollowUserItem])
+def get_user_following(
+    username: str,
+    optional_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all learners whom the specified user is following."""
+    target_user = db.query(User).filter(User.username.ilike(username.strip())).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail=f"User '@{username}' not found")
+
+    follows = (
+        db.query(Follow)
+        .filter(Follow.follower_id == target_user.id)
+        .order_by(Follow.created_at.desc())
+        .all()
+    )
+
+    results: List[FollowUserItem] = []
+    for f in follows:
+        u = db.query(User).filter(User.id == f.following_id).first()
+        if not u:
+            continue
+
+        is_me = bool(optional_user and optional_user.id == u.id)
+        is_following = False
+        if optional_user and not is_me:
+            is_following = bool(
+                db.query(Follow)
+                .filter(Follow.follower_id == optional_user.id, Follow.following_id == u.id)
+                .first()
+            )
+
+        results.append(
+            FollowUserItem(
+                id=u.id,
+                username=u.username,
+                full_name=u.full_name if (u.show_real_name if u.show_real_name is not None else 1) else None,
+                avatar_url=u.avatar_url or "bot-1",
+                bio=u.bio,
+                profession=u.profession,
+                learning_domain=u.learning_domain if (u.show_interests if u.show_interests is not None else 1) else None,
+                is_following=is_following,
+                is_me=is_me,
+                followed_at=f.created_at,
+            )
+        )
+
+    return results

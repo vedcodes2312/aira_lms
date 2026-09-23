@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { getPublicProfile, PublicProfileData } from "@/lib/api";
+import {
+  getPublicProfile,
+  followUser,
+  unfollowUser,
+  getUserFollowers,
+  getUserFollowing,
+  PublicProfileData,
+  FollowUserItem,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +32,12 @@ import {
   CheckCircle2,
   ArrowRight,
   Share2,
+  Users,
+  UserPlus,
+  UserCheck,
+  UserMinus,
+  X,
+  Search,
 } from "lucide-react";
 
 const AVATAR_MAP: Record<string, string> = {
@@ -44,6 +58,18 @@ export default function PublicProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Follow Action State
+  const [followLoading, setFollowLoading] = useState(false);
+
+  // Social Modal State
+  const [socialModalOpen, setSocialModalOpen] = useState(false);
+  const [socialModalTab, setSocialModalTab] = useState<"followers" | "following">("followers");
+  const [followersList, setFollowersList] = useState<FollowUserItem[]>([]);
+  const [followingList, setFollowingList] = useState<FollowUserItem[]>([]);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialSearch, setSocialSearch] = useState("");
+  const [listActionLoading, setListActionLoading] = useState<number | null>(null);
 
   useEffect(() => {
     if (username) {
@@ -69,6 +95,100 @@ export default function PublicProfilePage() {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const handleFollowToggle = async () => {
+    if (!profile) return;
+    setFollowLoading(true);
+    try {
+      if (profile.is_following) {
+        const res = await unfollowUser(profile.username);
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                is_following: false,
+                followers_count: res.followers_count,
+              }
+            : null
+        );
+      } else {
+        const res = await followUser(profile.username);
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                is_following: true,
+                followers_count: res.followers_count,
+              }
+            : null
+        );
+      }
+    } catch (err: any) {
+      alert(err.message || "Action failed. Please sign in first.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const openSocialModal = async (tab: "followers" | "following") => {
+    setSocialModalTab(tab);
+    setSocialModalOpen(true);
+    setSocialLoading(true);
+    try {
+      if (tab === "followers") {
+        const data = await getUserFollowers(username);
+        setFollowersList(data);
+      } else {
+        const data = await getUserFollowing(username);
+        setFollowingList(data);
+      }
+    } catch (err) {
+      console.error("Failed to load social connections", err);
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const switchSocialTab = async (tab: "followers" | "following") => {
+    setSocialModalTab(tab);
+    setSocialLoading(true);
+    try {
+      if (tab === "followers") {
+        const data = await getUserFollowers(username);
+        setFollowersList(data);
+      } else {
+        const data = await getUserFollowing(username);
+        setFollowingList(data);
+      }
+    } catch (err) {
+      console.error("Failed to load social connections", err);
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const handleListFollowToggle = async (item: FollowUserItem) => {
+    setListActionLoading(item.id);
+    try {
+      if (item.is_following) {
+        await unfollowUser(item.username);
+        const updater = (list: FollowUserItem[]) =>
+          list.map((u) => (u.id === item.id ? { ...u, is_following: false } : u));
+        setFollowersList(updater);
+        setFollowingList(updater);
+      } else {
+        await followUser(item.username);
+        const updater = (list: FollowUserItem[]) =>
+          list.map((u) => (u.id === item.id ? { ...u, is_following: true } : u));
+        setFollowersList(updater);
+        setFollowingList(updater);
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to update follow status.");
+    } finally {
+      setListActionLoading(null);
     }
   };
 
@@ -103,7 +223,7 @@ export default function PublicProfilePage() {
   }
 
   // Handle Private Profile
-  if (!profile.is_public) {
+  if (!profile.is_public && !profile.is_me) {
     return (
       <div className="max-w-xl mx-auto my-16 px-4 text-center">
         <div className="p-8 sm:p-10 bg-white border border-slate-200 rounded-3xl shadow-sm">
@@ -119,11 +239,33 @@ export default function PublicProfilePage() {
           <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
             This learner has configured their AIRA profile to be private. Their enrolled courses, badges, and learning history are hidden.
           </p>
-          <Link href="/">
-            <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs">
-              Explore AIRA LMS
+          
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              onClick={handleFollowToggle}
+              disabled={followLoading}
+              className={`text-xs font-bold px-4 py-2 rounded-xl transition-all ${
+                profile.is_following
+                  ? "bg-slate-200 hover:bg-red-50 text-slate-700 hover:text-red-600 border border-slate-300"
+                  : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
+              }`}
+            >
+              {profile.is_following ? (
+                <>
+                  <UserCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Following
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-3.5 h-3.5 mr-1" /> Follow Learner
+                </>
+              )}
             </Button>
-          </Link>
+            <Link href="/">
+              <Button variant="outline" className="text-xs">
+                Explore AIRA
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -133,6 +275,14 @@ export default function PublicProfilePage() {
   const memberDate = profile.member_since
     ? new Date(profile.member_since).toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "2026";
+
+  const activeSocialList = socialModalTab === "followers" ? followersList : followingList;
+  const filteredSocialList = activeSocialList.filter(
+    (u) =>
+      u.username.toLowerCase().includes(socialSearch.toLowerCase()) ||
+      (u.full_name && u.full_name.toLowerCase().includes(socialSearch.toLowerCase())) ||
+      (u.profession && u.profession.toLowerCase().includes(socialSearch.toLowerCase()))
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-8">
@@ -172,32 +322,85 @@ export default function PublicProfilePage() {
                 </p>
               )}
 
-              <div className="flex items-center gap-4 text-xs text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Member since {memberDate}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> AIRA Frontier Scholar
+              {/* Social Follower Counters & Metadata */}
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300 pt-1">
+                <button
+                  onClick={() => openSocialModal("followers")}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 font-medium"
+                >
+                  <Users className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="font-bold text-white text-sm">{profile.followers_count}</span>
+                  <span className="text-slate-400 text-xs">Followers</span>
+                </button>
+
+                <span className="text-slate-600">•</span>
+
+                <button
+                  onClick={() => openSocialModal("following")}
+                  className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 font-medium"
+                >
+                  <span className="font-bold text-white text-sm">{profile.following_count}</span>
+                  <span className="text-slate-400 text-xs">Following</span>
+                </button>
+
+                <span className="text-slate-600">•</span>
+
+                <span className="flex items-center gap-1 text-slate-400">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Joined {memberDate}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Share Profile Button */}
-          <div className="shrink-0 flex items-center gap-2">
+          {/* Action Buttons (Follow / Share / Edit) */}
+          <div className="shrink-0 flex flex-wrap items-center gap-3">
+            {profile.is_me ? (
+              <Link href="/profile">
+                <Button className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2">
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Edit Profile</span>
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                onClick={handleFollowToggle}
+                disabled={followLoading}
+                className={`font-bold text-xs px-5 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2 ${
+                  profile.is_following
+                    ? "bg-white/10 hover:bg-red-500/20 hover:border-red-400/50 text-white border border-white/20 hover:text-red-300"
+                    : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                }`}
+              >
+                {followLoading ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : profile.is_following ? (
+                  <>
+                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Following</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Follow</span>
+                  </>
+                )}
+              </Button>
+            )}
+
             <Button
               onClick={handleCopyLink}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md transition-all flex items-center gap-2"
+              variant="outline"
+              className="bg-white/5 hover:bg-white/10 text-white border-white/20 font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2"
             >
               {copied ? (
                 <>
                   <Check className="w-4 h-4 text-emerald-300" />
-                  <span>Copied Profile Link!</span>
+                  <span>Copied!</span>
                 </>
               ) : (
                 <>
-                  <Share2 className="w-4 h-4" />
-                  <span>Share Profile</span>
+                  <Share2 className="w-4 h-4 text-slate-300" />
+                  <span>Share</span>
                 </>
               )}
             </Button>
@@ -248,85 +451,82 @@ export default function PublicProfilePage() {
 
             <div className="p-4 rounded-2xl bg-purple-50/50 border border-purple-100/80">
               <span className="text-[10px] uppercase font-bold text-purple-700 tracking-wider block mb-1">
-                Proficiency Level
+                Knowledge Level
               </span>
               <span className="text-sm font-bold text-slate-900 block">
                 {profile.knowledge_level || "Beginner"}
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/80">
-              <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block mb-1">
-                Explanation Style
+            <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100/80">
+              <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider block mb-1">
+                Teaching Style
               </span>
               <span className="text-sm font-bold text-slate-900 block">
                 {profile.explanation_style || "Intuitive"}
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100/80">
-              <span className="text-[10px] uppercase font-bold text-amber-700 tracking-wider block mb-1">
+            <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/80">
+              <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block mb-1">
                 Primary Goal
               </span>
-              <span className="text-sm font-bold text-slate-900 block truncate" title={profile.learning_goal || "Deep-Tech Upskilling"}>
-                {profile.learning_goal || "Deep-Tech Upskilling"}
+              <span className="text-sm font-bold text-slate-900 block truncate">
+                {profile.learning_goal || "Mastery"}
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Section 2: Verified Certifications Showcase (if enabled) */}
-      {profile.show_certificates && profile.certificates && profile.certificates.length > 0 && (
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+      {/* Section 2: Verified Certificates (if enabled) */}
+      {profile.show_certificates && profile.certificates.length > 0 && (
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Award className="w-5 h-5 text-purple-600" />
-              <h2 className="text-base font-bold text-slate-900">Verified Certificates of Completion</h2>
+              <h2 className="text-base font-bold text-slate-900">Verified Credentials & Certificates</h2>
             </div>
             <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
-              {profile.certificates.length} Verifiable Credentials
+              {profile.certificates.length} Verified
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {profile.certificates.map((cert) => (
               <div
                 key={cert.cert_uuid}
-                className="p-5 rounded-2xl bg-linear-to-br from-amber-50/40 via-white to-purple-50/40 border border-amber-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
+                className="p-5 rounded-2xl border border-slate-200 hover:border-purple-300 transition-all bg-linear-to-br from-white to-purple-50/20 shadow-xs flex flex-col justify-between space-y-3"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-[10px] font-mono font-bold bg-slate-900 text-amber-300 px-2 py-0.5 rounded-md">
-                      {cert.cert_uuid}
-                    </span>
-                    <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
-                      {cert.score_percentage}% Score
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge className="bg-purple-100 text-purple-800 text-[10px] font-bold border-purple-200">
+                      {cert.domain}
                     </Badge>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      ID: {cert.cert_uuid}
+                    </span>
                   </div>
-
-                  <h3 className="font-bold text-slate-900 text-sm mb-1 leading-snug">
+                  <h3 className="font-bold text-slate-900 text-sm leading-snug">
                     {cert.course_title}
                   </h3>
-
                   {cert.badge_name && (
-                    <div className="text-xs font-semibold text-amber-700 flex items-center gap-1 mb-3">
-                      <Trophy className="w-3.5 h-3.5 text-amber-500" />
-                      <span>{cert.badge_name}</span>
+                    <div className="text-xs text-amber-700 font-semibold mt-1 flex items-center gap-1">
+                      <Trophy className="w-3.5 h-3.5 text-amber-500" /> {cert.badge_name}
                     </div>
                   )}
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400">
-                    Issued: {new Date(cert.issued_at).toLocaleDateString()}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-slate-500 text-[11px]">
+                    Issued {new Date(cert.issued_at).toLocaleDateString()}
                   </span>
                   <Link
-                    href={cert.verification_url}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                    href={`/certificate/${cert.cert_uuid}`}
+                    className="font-bold text-purple-600 hover:text-purple-700 inline-flex items-center gap-1 text-xs"
                   >
-                    <span>View Certificate</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Verify Credential</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>
@@ -335,34 +535,34 @@ export default function PublicProfilePage() {
         </div>
       )}
 
-      {/* Section 3: Earned Badges Showcase (if enabled) */}
-      {profile.show_badges && profile.badges && profile.badges.length > 0 && (
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+      {/* Section 3: Honorary Badges (if enabled) */}
+      {profile.show_badges && profile.badges.length > 0 && (
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Trophy className="w-5 h-5 text-amber-500" />
               <h2 className="text-base font-bold text-slate-900">Honorary Badges & Achievements</h2>
             </div>
-            <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-              {profile.badges.length} Badges
+            <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+              {profile.badges.length} Unlocked
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {profile.badges.map((b) => (
               <div
                 key={b.id}
-                className="p-4 rounded-2xl bg-amber-50/30 border border-amber-100 hover:border-amber-300 transition-all flex items-start gap-3.5"
+                className="p-4 rounded-2xl border border-amber-200/60 bg-linear-to-br from-amber-50/40 via-white to-amber-50/20 shadow-xs flex items-start gap-3.5"
               >
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs text-lg">
-                  🏆
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 border border-amber-200">
+                  <Trophy className="w-5 h-5" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-slate-900 text-xs mb-0.5 truncate">{b.name}</h3>
-                  <Badge variant="outline" className="text-[9px] mb-1.5 border-amber-200 text-amber-800 bg-amber-50">
-                    {b.domain}
-                  </Badge>
-                  <p className="text-[11px] text-slate-600 leading-tight line-clamp-2">{b.description}</p>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm leading-tight mb-0.5">{b.name}</h4>
+                  <p className="text-xs text-slate-500 line-clamp-2 mb-1">{b.description}</p>
+                  <span className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider">
+                    {b.domain} Specialization
+                  </span>
                 </div>
               </div>
             ))}
@@ -370,13 +570,13 @@ export default function PublicProfilePage() {
         </div>
       )}
 
-      {/* Section 4: Enrolled & Completed Courses (if enabled) */}
-      {profile.show_courses && profile.courses && profile.courses.length > 0 && (
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+      {/* Section 4: Enrolled & Completed Courses Showcase (if enabled) */}
+      {profile.show_courses && profile.courses.length > 0 && (
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-base font-bold text-slate-900">Courses & Learning Roadmap</h2>
+              <h2 className="text-base font-bold text-slate-900">Curriculums & Course Progress</h2>
             </div>
             <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">
               {profile.courses.length} Courses
@@ -441,6 +641,141 @@ export default function PublicProfilePage() {
           </Button>
         </Link>
       </div>
+
+      {/* ── Social Connections Modal (Followers & Following) ────────────────── */}
+      {socialModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900 text-base">
+                  @{profile.username}&apos;s Connections
+                </h3>
+              </div>
+              <button
+                onClick={() => setSocialModalOpen(false)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-slate-100 bg-slate-50/50">
+              <button
+                onClick={() => switchSocialTab("followers")}
+                className={`flex-1 py-3 text-xs font-bold text-center border-b-2 transition-colors ${
+                  socialModalTab === "followers"
+                    ? "border-indigo-600 text-indigo-600 bg-white"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Followers ({profile.followers_count})
+              </button>
+              <button
+                onClick={() => switchSocialTab("following")}
+                className={`flex-1 py-3 text-xs font-bold text-center border-b-2 transition-colors ${
+                  socialModalTab === "following"
+                    ? "border-indigo-600 text-indigo-600 bg-white"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Following ({profile.following_count})
+              </button>
+            </div>
+
+            {/* Search Filter */}
+            <div className="p-3 border-b border-slate-100">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search learners…"
+                  value={socialSearch}
+                  onChange={(e) => setSocialSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Body / User List */}
+            <div className="p-4 overflow-y-auto space-y-3 flex-1">
+              {socialLoading ? (
+                <div className="py-12 text-center text-slate-400 text-xs space-y-2">
+                  <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p>Loading connections…</p>
+                </div>
+              ) : filteredSocialList.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  {socialSearch
+                    ? "No learners match your search query."
+                    : socialModalTab === "followers"
+                    ? "No followers yet."
+                    : "Not following anyone yet."}
+                </div>
+              ) : (
+                filteredSocialList.map((u) => {
+                  const uEmoji = AVATAR_MAP[u.avatar_url] || "🤖";
+                  return (
+                    <div
+                      key={u.id}
+                      className="p-3 rounded-2xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-white transition-all flex items-center justify-between gap-3 shadow-2xs"
+                    >
+                      <Link
+                        href={`/u/${u.username}`}
+                        onClick={() => setSocialModalOpen(false)}
+                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-xl shrink-0 group-hover:scale-105 transition-transform">
+                          {uEmoji}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                              {u.full_name || u.username}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400 truncate">
+                              @{u.username}
+                            </span>
+                          </div>
+                          {u.profession && (
+                            <p className="text-[11px] text-slate-500 truncate">{u.profession}</p>
+                          )}
+                        </div>
+                      </Link>
+
+                      {/* Follow Toggle inside modal if not me */}
+                      {!u.is_me && (
+                        <Button
+                          onClick={() => handleListFollowToggle(u)}
+                          disabled={listActionLoading === u.id}
+                          variant="outline"
+                          size="sm"
+                          className={`text-[11px] font-bold h-8 px-3 rounded-xl transition-all ${
+                            u.is_following
+                              ? "bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-600 border-slate-200"
+                              : "bg-indigo-600 hover:bg-indigo-500 text-white border-transparent"
+                          }`}
+                        >
+                          {listActionLoading === u.id ? (
+                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          ) : u.is_following ? (
+                            "Following"
+                          ) : (
+                            "+ Follow"
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

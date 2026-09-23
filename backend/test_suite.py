@@ -170,7 +170,34 @@ def run_tests():
             print(f"  * Enroll Result:        {r_enroll.json()['message']}")
             print(f"  [OK] Independent Enrollment & Progress Pipeline Verified")
 
-    # 12. Test Admin Course Deletion Capability
+    # 12. Follower & Social Network Pipeline Test
+    print("\n--- Social Graph: Follow, View Followers, and Remove Follower Test ---")
+    if r_ved.status_code == 200 and r_priya.status_code == 200:
+        # vedtest follows priya_sharma
+        r_follow = requests.post("http://localhost:8000/profile/priya_sharma/follow", headers=ved_headers)
+        if r_follow.status_code == 200:
+            print(f"  * Follow Action:        {r_follow.json()['message']}")
+            print(f"  * Priya Followers:      {r_follow.json()['followers_count']}")
+            print(f"  [OK] Follow User Endpoint Verified 200 OK")
+
+        # Check Priya's followers list
+        r_f_list = requests.get("http://localhost:8000/profile/priya_sharma/followers", headers=priya_headers)
+        if r_f_list.status_code == 200:
+            followers = r_f_list.json()
+            print(f"  * Priya's Followers List: {len(followers)} learners")
+            for f in followers:
+                print(f"    - @{f['username']} (Avatar: {f['avatar_url']})")
+            print(f"  [OK] Get Followers Endpoint Verified 200 OK")
+
+        # Priya removes vedtest as follower ("delete followers")
+        if followers:
+            f_id = followers[0]["id"]
+            r_remove = requests.delete(f"http://localhost:8000/profile/followers/{f_id}", headers=priya_headers)
+            if r_remove.status_code == 200:
+                print(f"  * Remove Follower:      {r_remove.json()['message']} (Remaining: {r_remove.json()['followers_count']})")
+                print(f"  [OK] Delete/Remove Follower Endpoint Verified 200 OK")
+
+    # 13. Test Admin Course Deletion Capability
     print("\n--- Admin Deletion Permission Test ---")
     print("  * Verified: Admin endpoint DELETE /admin/courses/{id} is registered and ready.")
     print("==================================================")

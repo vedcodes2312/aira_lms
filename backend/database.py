@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime, timezone
 import os
@@ -168,6 +168,19 @@ class Enrollment(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     enrolled_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Follow(Base):
+    __tablename__ = "follows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    follower_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # User who is following
+    following_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # User being followed
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("follower_id", "following_id", name="uq_follower_following"),
+    )
 
 
 def get_db():

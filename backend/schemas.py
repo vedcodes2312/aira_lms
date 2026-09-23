@@ -247,6 +247,8 @@ class UserProfileResponse(BaseModel):
     completed_courses: int = 0
     total_badges: int = 0
     total_certificates: int = 0
+    followers_count: int = 0
+    following_count: int = 0
 
 
 class PublicCourseItem(BaseModel):
@@ -289,6 +291,12 @@ class PublicProfileResponse(BaseModel):
     profession: Optional[str] = None
     member_since: Optional[datetime] = None
     
+    # Social / Follow State
+    followers_count: int = 0
+    following_count: int = 0
+    is_following: bool = False
+    is_me: bool = False
+
     # Interests
     show_interests: bool = False
     learning_domain: Optional[str] = None
@@ -311,6 +319,29 @@ class PublicProfileResponse(BaseModel):
     completed_courses: int = 0
     total_badges: int = 0
     total_certificates: int = 0
+
+
+# ── Social Graph / Followers ──────────────────────────────────────────────────
+
+class FollowUserItem(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = "bot-1"
+    bio: Optional[str] = None
+    profession: Optional[str] = None
+    learning_domain: Optional[str] = None
+    is_following: bool = False  # Does the viewing user follow this person?
+    is_me: bool = False  # Is this the viewing user?
+    followed_at: datetime
+
+
+class FollowActionResponse(BaseModel):
+    success: bool
+    message: str
+    is_following: bool
+    followers_count: int
+    following_count: int
 
 
 # ── Course Search & Explore ───────────────────────────────────────────────────

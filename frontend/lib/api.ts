@@ -264,6 +264,7 @@ export interface AdminStats {
   total_quizzes: number;
   total_quiz_attempts: number;
   total_badges_earned: number;
+  total_enrollments?: number;
   average_quiz_score: number;
 }
 
@@ -281,6 +282,7 @@ export interface AdminCourse {
   completed_lessons: number;
   progress_percentage: number;
   badge_name: string | null;
+  enrolled_count?: number;
 }
 
 export interface AdminUser {
@@ -294,6 +296,8 @@ export interface AdminUser {
   onboarding_done: boolean;
   is_admin: boolean;
   course_count: number;
+  created_count?: number;
+  enrolled_count?: number;
   badge_count: number;
   created_at: string;
 }
@@ -429,6 +433,8 @@ export interface UserProfileData {
   completed_courses: number;
   total_badges: number;
   total_certificates: number;
+  followers_count: number;
+  following_count: number;
 }
 
 export interface UserProfileUpdatePayload {
@@ -489,6 +495,12 @@ export interface PublicProfileData {
   profession: string | null;
   member_since: string | null;
 
+  // Social / Follow State
+  followers_count: number;
+  following_count: number;
+  is_following: boolean;
+  is_me: boolean;
+
   show_interests: boolean;
   learning_domain: string | null;
   knowledge_level: string | null;
@@ -510,6 +522,29 @@ export interface PublicProfileData {
   total_certificates: number;
 }
 
+// ── Social Graph / Followers ──────────────────────────────────────────────────
+
+export interface FollowUserItem {
+  id: number;
+  username: string;
+  full_name: string | null;
+  avatar_url: string;
+  bio: string | null;
+  profession: string | null;
+  learning_domain: string | null;
+  is_following: boolean;
+  is_me: boolean;
+  followed_at: string;
+}
+
+export interface FollowActionResponse {
+  success: boolean;
+  message: string;
+  is_following: boolean;
+  followers_count: number;
+  following_count: number;
+}
+
 export async function getUserProfile(): Promise<UserProfileData> {
   return request<UserProfileData>("/profile/me");
 }
@@ -523,6 +558,32 @@ export async function updateUserProfile(payload: UserProfileUpdatePayload): Prom
 
 export async function getPublicProfile(username: string): Promise<PublicProfileData> {
   return request<PublicProfileData>(`/profile/public/${encodeURIComponent(username)}`, {}, false);
+}
+
+export async function followUser(username: string): Promise<FollowActionResponse> {
+  return request<FollowActionResponse>(`/profile/${encodeURIComponent(username)}/follow`, {
+    method: "POST",
+  });
+}
+
+export async function unfollowUser(username: string): Promise<FollowActionResponse> {
+  return request<FollowActionResponse>(`/profile/${encodeURIComponent(username)}/unfollow`, {
+    method: "POST",
+  });
+}
+
+export async function removeFollower(followerId: number): Promise<{ success: boolean; message: string; followers_count: number }> {
+  return request<{ success: boolean; message: string; followers_count: number }>(`/profile/followers/${followerId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getUserFollowers(username: string): Promise<FollowUserItem[]> {
+  return request<FollowUserItem[]>(`/profile/${encodeURIComponent(username)}/followers`, {}, false);
+}
+
+export async function getUserFollowing(username: string): Promise<FollowUserItem[]> {
+  return request<FollowUserItem[]>(`/profile/${encodeURIComponent(username)}/following`, {}, false);
 }
 
 // ── Course Search & Explore ───────────────────────────────────────────────────

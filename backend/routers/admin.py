@@ -13,6 +13,10 @@ from database import (
     LessonProgress,
     QuizAttempt,
     Badge,
+    Follow,
+    Enrollment,
+    Certificate,
+    LessonTranslation,
 )
 from auth import get_current_admin_user
 
@@ -30,6 +34,7 @@ def get_admin_stats(
     total_quizzes = db.query(Quiz).count()
     total_quiz_attempts = db.query(QuizAttempt).count()
     total_badges = db.query(Badge).count()
+    total_enrollments = db.query(Enrollment).count()
 
     attempts = db.query(QuizAttempt.percentage).all()
     avg_score = round(sum(a[0] for a in attempts) / len(attempts), 1) if attempts else 0.0
@@ -41,6 +46,7 @@ def get_admin_stats(
         "total_quizzes": total_quizzes,
         "total_quiz_attempts": total_quiz_attempts,
         "total_badges_earned": total_badges,
+        "total_enrollments": total_enrollments,
         "average_quiz_score": avg_score,
     }
 
@@ -68,6 +74,7 @@ def get_all_courses(
         )
 
         badge = db.query(Badge).filter(Badge.course_id == c.id, Badge.user_id == c.user_id).first()
+        enrolled_count = db.query(Enrollment).filter(Enrollment.course_id == c.id).count()
 
         results.append({
             "id": c.id,
@@ -83,6 +90,7 @@ def get_all_courses(
             "completed_lessons": completed_count,
             "progress_percentage": int((completed_count / total_lessons * 100)) if total_lessons > 0 else 0,
             "badge_name": badge.name if badge else None,
+            "enrolled_count": enrolled_count,
         })
     return results
 
@@ -97,7 +105,9 @@ def delete_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    # Delete related quiz attempts, progress, badges, quizzes, lessons, modules
+    # Delete related quiz attempts, progress, badges, enrollments, certificates, quizzes, lessons, modules
+    db.query(Enrollment).filter(Enrollment.course_id == course_id).delete()
+    db.query(Certificate).filter(Certificate.course_id == course_id).delete()
     db.query(QuizAttempt).filter(QuizAttempt.course_id == course_id).delete()
     db.query(LessonProgress).filter(LessonProgress.course_id == course_id).delete()
     db.query(Badge).filter(Badge.course_id == course_id).delete()
@@ -121,7 +131,8 @@ def get_all_users(
     users = db.query(User).order_by(User.id.asc()).all()
     results = []
     for u in users:
-        course_count = db.query(Course).filter(Course.user_id == u.id).count()
+        created_count = db.query(Course).filter(Course.user_id == u.id).count()
+        enrolled_count = db.query(Enrollment).filter(Enrollment.user_id == u.id).count()
         badge_count = db.query(Badge).filter(Badge.user_id == u.id).count()
         results.append({
             "id": u.id,
@@ -133,7 +144,9 @@ def get_all_users(
             "explanation_style": u.explanation_style,
             "onboarding_done": bool(u.onboarding_done),
             "is_admin": bool(u.is_admin),
-            "course_count": course_count,
+            "course_count": created_count + enrolled_count,
+            "created_count": created_count,
+            "enrolled_count": enrolled_count,
             "badge_count": badge_count,
             "created_at": u.created_at.isoformat() if u.created_at else None,
         })
@@ -155,6 +168,8 @@ def delete_user(
 
     courses = db.query(Course).filter(Course.user_id == user_id).all()
     for c in courses:
+        db.query(Enrollment).filter(Enrollment.course_id == c.id).delete()
+        db.query(Certificate).filter(Certificate.course_id == c.id).delete()
         db.query(QuizAttempt).filter(QuizAttempt.course_id == c.id).delete()
         db.query(LessonProgress).filter(LessonProgress.course_id == c.id).delete()
         db.query(Badge).filter(Badge.course_id == c.id).delete()
@@ -165,9 +180,12 @@ def delete_user(
             db.delete(mod)
         db.delete(c)
 
+    db.query(Enrollment).filter(Enrollment.user_id == user_id).delete()
+    db.query(Certificate).filter(Certificate.user_id == user_id).delete()
     db.query(QuizAttempt).filter(QuizAttempt.user_id == user_id).delete()
     db.query(LessonProgress).filter(LessonProgress.user_id == user_id).delete()
     db.query(Badge).filter(Badge.user_id == user_id).delete()
+    db.query(Follow).filter((Follow.follower_id == user_id) | (Follow.following_id == user_id)).delete()
     db.delete(user)
     db.commit()
 
@@ -192,6 +210,7 @@ def get_database_tables(
         "certificates",
         "lesson_translations",
         "enrollments",
+        "follows",
     ]
     summary = []
     for t in tables:
